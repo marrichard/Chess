@@ -1,0 +1,737 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Consolas, 'Courier New', monospace;
+  background: #0a0a14;
+  color: #e0e0e0;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* === Background === */
+#bg-effects {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(180, 142, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(100, 60, 200, 0.06) 0%, transparent 50%),
+    linear-gradient(180deg, #0a0a14 0%, #12121e 100%);
+  z-index: 0;
+}
+
+/* === Particles canvas === */
+#particles {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* === Phase system === */
+.phase {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease;
+  z-index: 1;
+}
+
+.phase.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* === Colors === */
+.gold { color: #ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.3); }
+.purple { color: #b48eff; }
+.player-color { color: #5082ff; }
+.enemy-color { color: #ff4646; }
+.sep { color: #444; margin: 0 0.5em; }
+
+/* ================================================================
+   BOARD VIEW (setup, battle, placement sub-phases)
+   ================================================================ */
+
+#board-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* --- Top status bar --- */
+#top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(10, 10, 20, 0.9);
+  border-bottom: 1px solid rgba(180, 142, 255, 0.15);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+#status-left { display: flex; align-items: center; gap: 0; }
+#status-right { display: flex; align-items: center; gap: 8px; color: #888; }
+
+/* --- Board area (left panel + board + right panel) --- */
+#board-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+}
+
+/* --- Side panels --- */
+#left-panel, #right-panel {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.panel-section {
+  background: rgba(20, 20, 40, 0.7);
+  border: 1px solid rgba(180, 142, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.panel-label {
+  font-size: 0.7rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+
+/* --- Battle log --- */
+#battle-log {
+  font-size: 0.7rem;
+  color: #aaa;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+#battle-log .log-entry {
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+#battle-log .log-entry.capture { color: #ff8866; }
+#battle-log .log-entry.victory { color: #66ff88; font-weight: bold; }
+#battle-log .log-entry.defeat { color: #ff6666; font-weight: bold; }
+
+/* --- Controls hint --- */
+#controls-text {
+  font-size: 0.65rem;
+  color: #666;
+  line-height: 1.6;
+}
+
+/* --- Board container --- */
+#board-container, #placement-board-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#board, #placement-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  aspect-ratio: 1;
+  width: min(65vh, 65vw, 520px);
+  height: min(65vh, 65vw, 520px);
+  border: 2px solid rgba(180, 142, 255, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* --- Board cells --- */
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.cell.light { background: #bab8a2; }
+.cell.dark  { background: #6e6c56; }
+
+/* Highlights */
+.cell.highlight-zone { background: rgba(0, 100, 0, 0.25); }
+.cell.light.highlight-zone { background: #8eaa7a; }
+.cell.dark.highlight-zone  { background: #5a7a4a; }
+
+.cell.highlight-move::after {
+  content: '';
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: rgba(0, 180, 0, 0.5);
+  z-index: 2;
+}
+
+.cell.highlight-capture {
+  box-shadow: inset 0 0 0 3px rgba(255, 50, 50, 0.6);
+}
+
+.cell.highlight-selected {
+  box-shadow: inset 0 0 0 3px rgba(255, 220, 50, 0.8);
+  background: rgba(255, 220, 50, 0.15);
+}
+
+/* Cursor */
+.cell.cursor-active {
+  outline: 2px solid #b48eff;
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+/* Cell mod overlay */
+.cell .cell-mod-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 1;
+  animation: cellModPulse 3s ease-in-out infinite;
+}
+
+@keyframes cellModPulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.4; }
+}
+
+/* Border mod */
+.cell.has-border-mod {
+  box-shadow: inset 0 0 0 2px var(--border-mod-color, #ffc832);
+}
+
+/* Blocked cell */
+.cell.blocked {
+  background: #333 !important;
+}
+
+/* --- Pieces --- */
+.piece {
+  font-size: 2.5rem;
+  line-height: 1;
+  z-index: 5;
+  position: relative;
+  transition: transform 200ms ease;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.piece.player { color: #5082ff; }
+.piece.enemy  { color: #ff4646; }
+
+/* Piece modifier glow effects */
+.piece.mod-flaming {
+  filter: drop-shadow(0 0 6px rgba(255, 100, 30, 0.8));
+  animation: flamingGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes flamingGlow {
+  from { filter: drop-shadow(0 0 4px rgba(255, 100, 30, 0.6)); }
+  to   { filter: drop-shadow(0 0 10px rgba(255, 100, 30, 1.0)); }
+}
+
+.piece.mod-armored {
+  filter: drop-shadow(0 0 4px rgba(180, 180, 200, 0.7));
+}
+
+.piece.mod-swift {
+  filter: drop-shadow(0 0 6px rgba(60, 200, 255, 0.7));
+  animation: swiftShimmer 2s ease-in-out infinite alternate;
+}
+@keyframes swiftShimmer {
+  from { filter: drop-shadow(0 0 4px rgba(60, 200, 255, 0.5)); }
+  to   { filter: drop-shadow(0 0 8px rgba(60, 200, 255, 1.0)); }
+}
+
+.piece.mod-piercing {
+  filter: drop-shadow(0 0 6px rgba(180, 60, 255, 0.7));
+}
+
+.piece.mod-royal {
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.8));
+  animation: royalPulse 2s ease-in-out infinite alternate;
+}
+@keyframes royalPulse {
+  from { filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.6)); }
+  to   { filter: drop-shadow(0 0 12px rgba(255, 215, 0, 1.0)); }
+}
+
+/* Piece slide animation */
+.piece.sliding {
+  transition: transform 200ms ease;
+}
+
+/* --- Roster bar --- */
+#roster-bar {
+  padding: 8px 16px;
+  background: rgba(10, 10, 20, 0.9);
+  border-top: 1px solid rgba(180, 142, 255, 0.15);
+  flex-shrink: 0;
+}
+
+#roster-items {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.roster-piece {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(30, 30, 60, 0.8);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.roster-piece:hover { border-color: rgba(180, 142, 255, 0.5); }
+.roster-piece.selected {
+  border-color: #b48eff;
+  box-shadow: 0 0 8px rgba(180, 142, 255, 0.4);
+}
+.roster-piece.placed { opacity: 0.4; }
+
+.roster-piece .piece-icon { font-size: 1.2rem; }
+.roster-piece .piece-label { font-size: 0.7rem; color: #aaa; }
+
+/* --- Message bar --- */
+#message-bar {
+  padding: 6px 16px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #b48eff;
+  background: rgba(10, 10, 20, 0.9);
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+/* ================================================================
+   OVERLAY CARDS (result, boss, tournament end, game over)
+   ================================================================ */
+
+.overlay-card {
+  background: rgba(15, 15, 30, 0.95);
+  border: 1px solid rgba(180, 142, 255, 0.3);
+  border-radius: 12px;
+  padding: 32px 40px;
+  text-align: center;
+  max-width: 500px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.overlay-card.wide { max-width: 700px; }
+
+.overlay-card h2 {
+  color: #b48eff;
+  font-size: 1.5rem;
+  letter-spacing: 0.15em;
+}
+
+.overlay-hint {
+  font-size: 0.7rem;
+  color: #666;
+  margin-top: 8px;
+}
+
+.defeat-title { color: #ff4646 !important; }
+
+/* Boss icon */
+.boss-icon {
+  font-size: 4rem;
+  color: #ff4646;
+  text-shadow: 0 0 20px rgba(255, 70, 70, 0.5);
+}
+
+/* ================================================================
+   SHOP
+   ================================================================ */
+
+#shop-view {
+  align-items: center;
+  justify-content: flex-start;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.shop-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.shop-header h2 {
+  color: #b48eff;
+  font-size: 1.4rem;
+  letter-spacing: 0.15em;
+}
+
+#shop-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 800px;
+}
+
+.shop-row-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.shop-row-items {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.shop-card {
+  width: 140px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.shop-card:hover {
+  border-color: rgba(180, 142, 255, 0.5);
+  box-shadow: 0 0 12px rgba(180, 140, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.shop-card.selected {
+  border-color: #b48eff;
+  box-shadow: 0 0 16px rgba(180, 142, 255, 0.4);
+  transform: translateY(-3px);
+}
+
+.shop-card.unaffordable { opacity: 0.5; }
+
+.shop-card-icon {
+  font-size: 1.6rem;
+  width: 2em;
+  text-align: center;
+}
+
+.shop-card-name { font-size: 0.85rem; font-weight: bold; }
+.shop-card-desc { font-size: 0.65rem; color: #888; }
+.shop-card-cost { font-size: 0.8rem; color: #ffd700; }
+
+/* ================================================================
+   DRAFT
+   ================================================================ */
+
+#draft-view {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+#draft-view h2 {
+  color: #b48eff;
+  font-size: 1.4rem;
+  letter-spacing: 0.15em;
+}
+
+#draft-cards {
+  display: flex;
+  gap: 16px;
+}
+
+.draft-card {
+  width: 160px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.draft-card:hover {
+  border-color: rgba(180, 142, 255, 0.5);
+  transform: translateY(-3px);
+}
+
+.draft-card.selected {
+  border-color: #b48eff;
+  box-shadow: 0 0 16px rgba(180, 142, 255, 0.4);
+}
+
+.draft-card-icon { font-size: 2rem; }
+.draft-card-desc { font-size: 0.75rem; color: #aaa; }
+
+/* ================================================================
+   ACTION BUTTONS
+   ================================================================ */
+
+.action-btn {
+  padding: 10px 28px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.3);
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 200ms ease;
+  text-align: center;
+  margin-top: 12px;
+}
+
+.action-btn:hover {
+  border-color: #b48eff;
+  box-shadow: 0 0 12px rgba(180, 142, 255, 0.3);
+}
+
+.action-btn.selected {
+  border-color: #b48eff;
+  box-shadow: 0 0 16px rgba(180, 142, 255, 0.4);
+  background: rgba(80, 60, 140, 0.3);
+}
+
+.phase-message {
+  font-size: 0.8rem;
+  color: #b48eff;
+  margin-top: 8px;
+  min-height: 1.2em;
+}
+
+/* ================================================================
+   PLACEMENT VIEW
+   ================================================================ */
+
+#placement-view {
+  align-items: center;
+  justify-content: center;
+}
+
+#placement-board-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ================================================================
+   PIECE MOD & SWAP TAROT VIEWS
+   ================================================================ */
+
+#piece-mod-roster, #swap-tarot-cards {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.roster-select-card, .tarot-select-card {
+  width: 100px;
+  padding: 10px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  text-align: center;
+}
+
+.roster-select-card:hover, .tarot-select-card:hover {
+  border-color: rgba(180, 142, 255, 0.5);
+}
+
+.roster-select-card.selected, .tarot-select-card.selected {
+  border-color: #b48eff;
+  box-shadow: 0 0 12px rgba(180, 142, 255, 0.4);
+}
+
+.roster-select-card .piece-icon, .tarot-select-card .tarot-icon {
+  font-size: 1.8rem;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.roster-select-card .piece-name, .tarot-select-card .tarot-name {
+  font-size: 0.7rem;
+  color: #aaa;
+}
+
+/* ================================================================
+   ELO SHOP
+   ================================================================ */
+
+#elo-shop-view {
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+#elo-shop-view h2 {
+  color: #b48eff;
+  font-size: 1.6rem;
+  letter-spacing: 0.2em;
+}
+
+#elo-shop-cards {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 800px;
+}
+
+.elo-card {
+  width: 150px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.elo-card:hover {
+  border-color: rgba(180, 142, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.elo-card.selected {
+  border-color: #b48eff;
+  box-shadow: 0 0 16px rgba(180, 142, 255, 0.4);
+  transform: translateY(-3px);
+}
+
+.elo-card.owned {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.elo-card.unaffordable { opacity: 0.6; }
+
+.elo-card-icon { font-size: 1.6rem; }
+.elo-card-name { font-size: 0.85rem; font-weight: bold; }
+.elo-card-desc { font-size: 0.6rem; color: #888; }
+.elo-card-cost { font-size: 0.8rem; color: #ffd700; }
+.elo-card-owned { font-size: 0.75rem; color: #666; }
+
+/* ================================================================
+   TOURNAMENT STATS
+   ================================================================ */
+
+#tournament-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.stat-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.stat-line .label { color: #888; }
+.stat-line .value { color: #e0e0e0; }
+
+/* ================================================================
+   SCREEN SHAKE
+   ================================================================ */
+
+.shaking {
+  animation: shake 0.3s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-3px, 2px); }
+  30% { transform: translate(3px, -2px); }
+  45% { transform: translate(-2px, 3px); }
+  60% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, 2px); }
+}
+
+/* ================================================================
+   TAROT / ARTIFACT ITEMS
+   ================================================================ */
+
+.item-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  background: rgba(30, 30, 60, 0.6);
+  margin-bottom: 3px;
+}
+
+.item-badge .item-icon { font-size: 0.85rem; }
+.item-badge .item-name { color: #ccc; }
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+@media (max-width: 900px) {
+  #left-panel, #right-panel { width: 140px; }
+  #board, #placement-board { width: min(55vh, 55vw, 400px); height: min(55vh, 55vw, 400px); }
+  .piece { font-size: 2rem; }
+}
+
+@media (max-width: 700px) {
+  #left-panel { display: none; }
+  #right-panel { display: none; }
+  #board, #placement-board { width: min(85vw, 85vh, 500px); height: min(85vw, 85vh, 500px); }
+}

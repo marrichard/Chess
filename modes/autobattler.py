@@ -14,6 +14,7 @@ from engine import Action, GameState
 from modifiers import (
     CellModifier, BorderModifier, CELL_MODIFIERS, BORDER_MODIFIERS,
     PIECE_MODIFIER_VISUALS, make_cell_modifier, make_border_modifier,
+    TAROT_CARDS, ARTIFACTS,
 )
 import renderer
 import save_data as sd
@@ -60,27 +61,48 @@ DIFFICULTY_MULT = {"basic": 1.0, "extreme": 1.5, "grandmaster": 2.5}
 
 
 def _layout(console: tcod.console.Console) -> dict:
-    """Calculate layout positions: board centered, panels in margins."""
+    """Calculate layout positions: board centered, panels in margins.
+
+    Ensures panels get at least MIN_PANEL_W columns by shrinking tiles
+    in a loop until things fit (or tiles hit minimum size).
+    """
+    MIN_PANEL_W = 14
+    GAP = 2  # gap between board edge and panel
     cw, ch = console.width, console.height
     bw, bh = renderer.board_pixel_size(Board(BOARD_W, BOARD_H))
 
-    # Center the board, ensure it doesn't clip at bottom
-    board_ox = (cw - bw) // 2
+    # Shrink tiles until board + 2 panels fit
+    while bw + 2 * (MIN_PANEL_W + GAP + 1) > cw and renderer.TILE_W > 3:
+        renderer.TILE_W = max(3, renderer.TILE_W - 2)
+        renderer.TILE_H = max(3, renderer.TILE_H - 2)
+        bw, bh = renderer.board_pixel_size(Board(BOARD_W, BOARD_H))
+
+    # Distribute remaining space evenly to panels
+    remaining = cw - bw
+    half = remaining // 2
+
+    # Board position: leave room for left panel
+    board_ox = max(half, MIN_PANEL_W + GAP + 1)
+    # Recompute actual panel widths
+    left_x = 1
+    left_w = max(MIN_PANEL_W, board_ox - GAP)
+    right_x = board_ox + bw + GAP
+    right_w = max(MIN_PANEL_W, cw - right_x - 1)
+
+    # If right panel overflows console, shift board left
+    if right_x + right_w >= cw:
+        board_ox = max(left_w + GAP, cw - bw - MIN_PANEL_W - GAP - 1)
+        right_x = board_ox + bw + GAP
+        right_w = max(MIN_PANEL_W, cw - right_x - 1)
+        left_w = max(MIN_PANEL_W, board_ox - GAP)
+
     board_oy = max(2, (ch - bh) // 2 - 1)
     if board_oy + bh >= ch - 2:
         board_oy = max(1, ch - bh - 3)
 
-    # Left panel: everything left of the board
-    left_x = 1
-    left_w = board_ox - 3
     left_y = board_oy
-
-    # Right panel: everything right of the board
-    right_x = board_ox + bw + 2
-    right_w = cw - right_x - 1
     right_y = board_oy
 
-    # Roster below the board
     roster_y = board_oy + bh + 2
 
     return {
@@ -89,10 +111,10 @@ def _layout(console: tcod.console.Console) -> dict:
         "bw": bw,
         "bh": bh,
         "left_x": left_x,
-        "left_w": max(left_w, 10),
+        "left_w": left_w,
         "left_y": left_y,
         "right_x": right_x,
-        "right_w": max(right_w, 10),
+        "right_w": right_w,
         "right_y": right_y,
         "roster_y": roster_y,
     }
@@ -309,7 +331,8 @@ class AutoBattler:
 
         # Shop
         self.shop_items: list[dict] = []
-        self.shop_selection = 0
+        self.shop_row: int = 0    # which section row (0=piece mods, 1=board, 2=specials, last=done)
+        self.shop_col: int = 0    # which item within current row
 
         # Placement sub-phase (for placing cell/border mods after purchase)
         self.placing_item: dict | None = None
@@ -374,6 +397,15 @@ class AutoBattler:
         self.max_lives: int = 3
         self.play_again: bool = False
 
+        # --- Tarot & Artifact system ---
+        self.tarot_cards: list[dict] = []   # held tarots (key dicts from TAROT_CARDS)
+        self.artifacts: list[dict] = []     # held artifacts (key dicts from ARTIFACTS)
+        self.tarot_slots: int = 1           # max tarots (1 base + ELO upgrades)
+        self.artifact_slots: int = 2        # max artifacts (2 base + ELO upgrades)
+        # Track one-time-per-wave effects
+        self.anchor_chain_used: bool = False
+        self.first_capture_this_turn: bool = True
+
     def on_enter(self) -> None:
         self.wave = 0
         self.wins = 0
@@ -390,10 +422,18 @@ class AutoBattler:
         self.tournament_stats = {"pieces_survived": 0, "gold_earned": 0, "bosses_beaten": 0}
         self.elo_earned = 0
 
+        # Reset tarot/artifact state
+        self.tarot_cards = []
+        self.artifacts = []
+        self.tarot_slots = 1
+        self.artifact_slots = 2
+
         if self.tournament and self.save_data:
             # Apply unlocks from save data
             self.max_lives = 3 + self.save_data.upgrades.get("extra_life", 0)
             self.gold = 5 * self.save_data.upgrades.get("start_gold", 0)
+            self.tarot_slots = 1 + self.save_data.upgrades.get("tarot_slot", 0)
+            self.artifact_slots = 2 + self.save_data.upgrades.get("artifact_slot", 0)
 
             # Build roster from unlocked pieces
             base_pieces = list(self.save_data.unlocked_pieces)
@@ -511,6 +551,10 @@ class AutoBattler:
             "border_modifiers": border_mods,
             "board_cell_modifiers": board_cell_mods,
             "board_border_modifiers": board_border_mods,
+            "tarot_cards": [dict(t) for t in self.tarot_cards],
+            "artifacts": [dict(a) for a in self.artifacts],
+            "tarot_slots": self.tarot_slots,
+            "artifact_slots": self.artifact_slots,
         }
 
     def restore_from_run_state(self, state: dict, save_data) -> None:
@@ -576,6 +620,12 @@ class AutoBattler:
                 x=bmd.get("x", 0), y=bmd.get("y", 0),
             )
 
+        # Restore tarot & artifact state
+        self.tarot_cards = state.get("tarot_cards", [])
+        self.artifacts = state.get("artifacts", [])
+        self.tarot_slots = state.get("tarot_slots", 1)
+        self.artifact_slots = state.get("artifact_slots", 2)
+
         # _start_wave increments wave, so offset by -1 to land on saved wave
         saved_phase = state.get("phase", "setup")
         self.wave -= 1
@@ -586,6 +636,196 @@ class AutoBattler:
     def _auto_save(self) -> None:
         """Save current run state to disk at checkpoint phases."""
         sd.save_run(self.to_run_state())
+
+    def _update_cursor_from_board(self, bx: int, by: int) -> None:
+        """Set cursor from JS-provided board coordinates."""
+        if self.board.in_bounds(bx, by):
+            self.cursor = (bx, by)
+
+    def to_render_state(self) -> dict:
+        """Serialize everything JS needs to render the current phase."""
+        # Build 8x8 board grid
+        board_grid = []
+        for row_y in range(self.board.height):
+            row = []
+            for col_x in range(self.board.width):
+                piece = self.board.get_piece_at(col_x, row_y)
+                piece_data = None
+                if piece:
+                    mods = [{"name": m.name, "effect": m.effect} for m in piece.modifiers]
+                    cm = None
+                    if piece.cell_modifier:
+                        cm = piece.cell_modifier.effect
+                    piece_data = {
+                        "type": piece.piece_type.value,
+                        "team": piece.team.value,
+                        "modifiers": mods,
+                        "cellMod": cm,
+                    }
+
+                cell_mod = None
+                cm_obj = self.board.cell_modifiers.get((col_x, row_y))
+                if cm_obj:
+                    cell_mod = {
+                        "name": cm_obj.name,
+                        "effect": cm_obj.effect,
+                        "color": list(cm_obj.color),
+                    }
+
+                border_mod = None
+                bm_obj = self.board.border_modifiers.get((col_x, row_y))
+                if bm_obj:
+                    border_mod = {
+                        "name": bm_obj.name,
+                        "effect": bm_obj.effect,
+                        "color": list(bm_obj.border_color),
+                    }
+
+                row.append({
+                    "x": col_x,
+                    "y": row_y,
+                    "piece": piece_data,
+                    "cellMod": cell_mod,
+                    "borderMod": border_mod,
+                    "blocked": self.board.is_blocked(col_x, row_y),
+                })
+            board_grid.append(row)
+
+        # Highlights map
+        highlights = {}
+        if self.phase == "setup":
+            for bx in range(self.board.width):
+                for by in range(4, self.board.height):
+                    if self.board.is_empty(bx, by):
+                        highlights[f"{bx},{by}"] = "zone"
+        if self.selected_piece:
+            highlights[f"{self.selected_piece.x},{self.selected_piece.y}"] = "selected"
+            for mx, my in self.valid_moves:
+                target = self.board.get_piece_at(mx, my)
+                if target and target.team != self.selected_piece.team:
+                    highlights[f"{mx},{my}"] = "capture"
+                else:
+                    highlights[f"{mx},{my}"] = "move"
+
+        # Roster info
+        roster_data = []
+        for p in self.roster:
+            mods = [{"name": m.name, "effect": m.effect} for m in p.modifiers]
+            roster_data.append({
+                "type": p.piece_type.value,
+                "team": p.team.value,
+                "placed": p in self.placed,
+                "alive": p.alive,
+                "modifiers": mods,
+            })
+
+        # Selected piece info
+        sel_piece = None
+        if self.selected_piece and self.selected_piece.alive:
+            sel_piece = {
+                "x": self.selected_piece.x,
+                "y": self.selected_piece.y,
+                "type": self.selected_piece.piece_type.value,
+            }
+
+        state = {
+            "phase": self.phase,
+            "board": board_grid,
+            "boardWidth": self.board.width,
+            "boardHeight": self.board.height,
+            "cursor": list(self.cursor),
+            "highlights": highlights,
+            "wave": self.wave,
+            "gold": self.gold,
+            "wins": self.wins,
+            "losses": self.losses,
+            "maxLives": self.max_lives,
+            "lives": self.max_lives - self.losses,
+            "message": self.message,
+            "battleLog": self.battle_log[-14:],
+            "battleTurn": self.battle_turn,
+            "manualMode": self.manual_mode,
+            "playerTurn": self.battle_player_turn,
+            "tournament": self.tournament,
+            "difficulty": self.difficulty,
+            "roster": roster_data,
+            "rosterSelection": self.roster_selection,
+            "selectedPiece": sel_piece,
+            "validMoves": [list(m) for m in self.valid_moves],
+            "tarotCards": [dict(t) for t in self.tarot_cards],
+            "artifacts": [dict(a) for a in self.artifacts],
+            "tarotSlots": self.tarot_slots,
+            "artifactSlots": self.artifact_slots,
+            "seed": self.seed,
+        }
+
+        # Phase-specific data
+        if self.phase == "shop":
+            shop_rows = self._get_shop_rows()
+            rows_data = []
+            for r in shop_rows:
+                items_data = []
+                for flat_idx, item in r["items"]:
+                    items_data.append({
+                        "index": flat_idx,
+                        "type": item["type"],
+                        "key": item.get("key", ""),
+                        "name": item["name"],
+                        "cost": item["cost"],
+                        "description": item.get("description", ""),
+                        "category": item.get("category", ""),
+                        "color": list(item.get("color", (200, 200, 200))),
+                        "icon": item.get("icon", "?"),
+                    })
+                rows_data.append({
+                    "label": r["label"],
+                    "color": list(r["color"]),
+                    "items": items_data,
+                })
+            state["shopRows"] = rows_data
+            state["shopRow"] = self.shop_row
+            state["shopCol"] = self.shop_col
+
+        if self.phase == "draft":
+            draft_data = []
+            for opt in self.draft_options:
+                d = {"type": opt["type"], "desc": opt["desc"]}
+                if opt["type"] == "add":
+                    d["pieceType"] = opt["piece_type"].value
+                elif opt["type"] == "combine":
+                    d["from"] = opt["from"].value
+                    d["to"] = opt["to"].value
+                    d["count"] = opt["count"]
+                draft_data.append(d)
+            state["draftOptions"] = draft_data
+            state["draftSelection"] = self.draft_selection
+
+        if self.phase in ("place_cell", "place_border", "place_piece_mod", "swap_tarot"):
+            placing = None
+            if self.placing_item:
+                placing = {
+                    "type": self.placing_item["type"],
+                    "name": self.placing_item.get("name", ""),
+                    "key": self.placing_item.get("key", ""),
+                }
+            state["placingItem"] = placing
+
+        if self.phase == "boss_intro":
+            boss_type = self.boss_sequence[self.boss_index] if self.boss_index < len(self.boss_sequence) else None
+            state["bossType"] = boss_type.value if boss_type else ""
+            boss_info = BOSS_TABLE.get(boss_type, {}) if boss_type else {}
+            state["bossMods"] = boss_info.get("mods", [])
+
+        if self.phase == "tournament_end":
+            state["tournamentStats"] = dict(self.tournament_stats)
+            state["eloEarned"] = self.elo_earned
+            won = int(self.tournament_stats.get("bosses_beaten", 0)) >= len(self.boss_sequence)
+            state["tournamentWon"] = won
+
+        if self.phase == "game_over":
+            state["playAgain"] = self.play_again
+
+        return state
 
     def _start_wave(self) -> None:
         self.wave += 1
@@ -625,6 +865,9 @@ class AutoBattler:
         else:
             self._generate_enemies()
             self.phase = "setup"
+
+        # --- Apply tarot & artifact wave-start effects ---
+        self._apply_wave_start_effects()
 
         self._auto_save()
 
@@ -752,6 +995,8 @@ class AutoBattler:
             return self._handle_place_border(action)
         elif self.phase == "place_piece_mod":
             return self._handle_place_piece_mod(action)
+        elif self.phase == "swap_tarot":
+            return self._handle_swap_tarot(action)
         elif self.phase == "draft":
             return self._handle_draft(action)
         elif self.phase == "boss_intro":
@@ -1124,7 +1369,15 @@ class AutoBattler:
         """Execute the player's chosen move, log it, then auto-step enemy."""
         target = self.board.get_piece_at(mx, my)
         if target and target.team != piece.team:
+            target_type = target.piece_type
             self.board.move_piece(piece, mx, my, rng=self.rng)
+            self._check_anchor_chain()
+            # The Pawn: pawns that capture promote to the killed piece type
+            if (self._has_tarot("the_pawn") and piece.alive
+                    and piece.piece_type == PieceType.PAWN
+                    and target_type != PieceType.PAWN):
+                piece.piece_type = target_type
+                self.battle_log.append(f"Pawn promotes to {target_type.value}!")
             log = f"Player {piece.piece_type.value} captures {target.piece_type.value}!"
             self._trigger_shake(0.3)
             sx, sy = self._board_to_screen(mx, my)
@@ -1155,6 +1408,18 @@ class AutoBattler:
         # Auto-step enemy turn
         self._enemy_step()
 
+    def _check_anchor_chain(self) -> None:
+        """Anchor Chain artifact: first player piece to die each wave survives instead."""
+        if self.anchor_chain_used or not self._has_artifact("anchor_chain"):
+            return
+        # Check if any player piece just died (alive=False but still in pieces list)
+        for p in self.board.pieces:
+            if p.team == Team.PLAYER and not p.alive and p in self.roster:
+                p.alive = True
+                self.anchor_chain_used = True
+                self.battle_log.append(f"Anchor Chain saves {p.piece_type.value}!")
+                break
+
     def _enemy_step(self) -> None:
         """Execute one AI enemy turn, then switch back to player."""
         pieces = self.board.get_team_pieces(Team.ENEMY)
@@ -1175,6 +1440,7 @@ class AutoBattler:
             self._record_move(best_piece, best_piece.x, best_piece.y, captured=bool(is_capture))
             if is_capture:
                 self.board.move_piece(best_piece, mx, my, rng=self.rng)
+                self._check_anchor_chain()
                 log = f"Enemy {best_piece.piece_type.value} captures {target.piece_type.value}!"
                 self._trigger_shake(0.3)
                 sx, sy = self._board_to_screen(mx, my)
@@ -1246,6 +1512,7 @@ class AutoBattler:
             self._record_move(best_piece, best_piece.x, best_piece.y, captured=bool(is_capture))
             if is_capture:
                 self.board.move_piece(best_piece, mx, my, rng=self.rng)
+                self._check_anchor_chain()
                 log = f"{team.value} {best_piece.piece_type.value} captures {target.piece_type.value}!"
                 # Visual feedback: shake + capture burst
                 self._trigger_shake(0.3)
@@ -1289,13 +1556,22 @@ class AutoBattler:
             # Gold reward: 2 + surviving pieces
             earned = 2 + player_alive
             # Royal modifier: surviving Royal pieces earn double score contribution
+            royal_mult = 3 if self._has_artifact("iron_crown") else 2
             for p in self.board.get_team_pieces(Team.PLAYER):
                 if any(m.effect == "royal" for m in p.modifiers):
-                    earned += p.value  # extra value on top of survival bonus
+                    earned += p.value * (royal_mult - 1)
+            # Gold Tooth artifact: +2g per copy
+            earned += 2 * self._artifact_count("gold_tooth")
+            # The Merchant tarot: +3g per wave
+            if self._has_tarot("the_merchant"):
+                earned += 3
             self.gold += earned
             self.message = f"Victory! ({player_alive} survive) +{earned}g"
             self.battle_log.append(f"=== VICTORY === (+{earned}g)")
             self._trigger_flash((40, 200, 40))
+            # Crown Jewel artifact: +1 ELO per wave won
+            if self._has_artifact("crown_jewel") and self.tournament:
+                self.elo_earned += 1
 
             # Tournament stat tracking
             if self.tournament:
@@ -1416,12 +1692,82 @@ class AutoBattler:
 
         self.draft_options.append({"type": "skip", "desc": "Skip -> Next wave"})
 
+    # --- Tarot / Artifact helpers ---
+
+    def _has_tarot(self, effect: str) -> bool:
+        """Check if player holds a tarot with the given effect."""
+        return any(t["effect"] == effect for t in self.tarot_cards)
+
+    def _has_artifact(self, effect: str) -> bool:
+        """Check if player holds an artifact with the given effect."""
+        return any(a["effect"] == effect for a in self.artifacts)
+
+    def _artifact_count(self, effect: str) -> int:
+        """Count how many copies of an artifact the player holds."""
+        return sum(1 for a in self.artifacts if a["effect"] == effect)
+
+    def _apply_wave_start_effects(self) -> None:
+        """Apply tarot and artifact passive effects at wave start."""
+        # Reset per-wave tracking
+        self.anchor_chain_used = False
+        self.first_capture_this_turn = True
+
+        # --- Tarot effects ---
+
+        # The Flame: all roster pieces gain flaming
+        if self._has_tarot("the_flame"):
+            for p in self.roster:
+                if not any(m.effect == "flaming" for m in p.modifiers):
+                    p.modifiers.append(MODIFIERS["flaming"])
+
+        # The Fortress: all roster pieces gain armored
+        if self._has_tarot("the_fortress"):
+            for p in self.roster:
+                if not any(m.effect == "armored" for m in p.modifiers):
+                    p.modifiers.append(MODIFIERS["armored"])
+
+        # The Pawn: remove old temp pawns, add 3 fresh ones
+        if self._has_tarot("the_pawn"):
+            self.roster = [p for p in self.roster if not getattr(p, '_temp_pawn', False)]
+            for _ in range(3):
+                pawn = Piece(PieceType.PAWN, Team.PLAYER)
+                pawn._temp_pawn = True  # type: ignore[attr-defined]
+                self.roster.append(pawn)
+
+        # --- Artifact effects ---
+
+        # Chaos Orb: switch a random enemy to player side
+        if self._has_artifact("chaos_orb"):
+            enemies = self.board.get_team_pieces(Team.ENEMY)
+            if enemies:
+                switched = self.rng.choice(enemies)
+                switched.team = Team.PLAYER
+                self.roster.append(switched)
+                self.placed.append(switched)
+
+        # Pandemonium: spawn a random cell modifier on an empty cell
+        if self._has_artifact("pandemonium"):
+            cell_keys = list(CELL_MODIFIERS.keys())
+            key = self.rng.choice(cell_keys)
+            empty_cells = [
+                (x, y) for x in range(self.board.width) for y in range(self.board.height)
+                if self.board.is_empty(x, y)
+                and (x, y) not in self.board.cell_modifiers
+                and (x, y) not in self.board.border_modifiers
+            ]
+            if empty_cells:
+                cx, cy = self.rng.choice(empty_cells)
+                cm = make_cell_modifier(key, cx, cy)
+                self.board.cell_modifiers[(cx, cy)] = cm
+                self.cell_modifiers.append(cm)
+
     # --- Shop ---
 
     def _generate_shop(self) -> None:
         """Generate random shop offerings: piece mods, cell mods, border mods."""
         self.shop_items = []
-        self.shop_selection = 0
+        self.shop_row = 0
+        self.shop_col = 0
 
         # Determine available modifier keys
         if self.tournament and self.save_data:
@@ -1478,63 +1824,196 @@ class AutoBattler:
             "description": tmpl["description"],
         })
 
-        # Always offer "Done shopping"
-        self.shop_items.append({
-            "type": "done", "cost": 0,
-            "icon": ">",
-            "category": "done",
-            "color": renderer.FG_DIM,
-            "name": "Done",
-            "description": "Proceed to draft phase",
-        })
+        # Offer a tarot card (wave 2+, ~50% chance)
+        if self.wave >= 2 and self.rng.random() < 0.5:
+            held_keys = {t["effect"] for t in self.tarot_cards}
+            available_tarots = [k for k in TAROT_CARDS if k not in held_keys]
+            if available_tarots:
+                key = self.rng.choice(available_tarots)
+                t = TAROT_CARDS[key]
+                cost = t["cost"]
+                # Merchant discount
+                if self._has_tarot("the_merchant"):
+                    cost = max(1, cost - 2)
+                self.shop_items.append({
+                    "type": "tarot", "key": key,
+                    "cost": cost,
+                    "icon": t["icon"],
+                    "category": "Tarot",
+                    "color": t["color"],
+                    "name": t["name"],
+                    "description": t["description"],
+                })
+
+        # Offer an artifact (wave 1+, ~40% chance, guaranteed wave 3+)
+        offer_artifact = self.wave >= 3 or (self.wave >= 1 and self.rng.random() < 0.4)
+        if offer_artifact:
+            held_keys = {a["effect"] for a in self.artifacts}
+            available_arts = [k for k in ARTIFACTS if k not in held_keys]
+            if available_arts:
+                # Weight by rarity
+                weights = []
+                for k in available_arts:
+                    r = ARTIFACTS[k].get("rarity", "common")
+                    weights.append({"common": 3, "uncommon": 2, "rare": 1}.get(r, 2))
+                key = self.rng.choices(available_arts, weights=weights, k=1)[0]
+                a = ARTIFACTS[key]
+                cost = a["cost"]
+                if self._has_tarot("the_merchant"):
+                    cost = max(1, cost - 2)
+                self.shop_items.append({
+                    "type": "artifact", "key": key,
+                    "cost": cost,
+                    "icon": a["icon"],
+                    "category": "Artifact",
+                    "color": a["color"],
+                    "name": a["name"],
+                    "description": a["description"],
+                })
+
+        # Extra items from Lucky Coin artifact
+        extra_items = sum(1 for a in self.artifacts if a["effect"] == "lucky_coin")
+        for _ in range(extra_items):
+            key = self.rng.choice(available_mod_keys)
+            mod = MODIFIERS[key]
+            self.shop_items.append({
+                "type": "piece_mod", "key": key, "mod": mod,
+                "cost": 5,
+                "icon": "*",
+                "category": "Piece Mod",
+                "color": PIECE_MODIFIER_VISUALS[key]["color"],
+                "name": mod.name,
+                "description": mod.description,
+            })
+
+        # Extra items from Merchant tarot
+        if self._has_tarot("the_merchant"):
+            for _ in range(2):
+                if self.rng.random() < 0.5:
+                    key = self.rng.choice(available_mod_keys)
+                    mod = MODIFIERS[key]
+                    cost = max(1, 5 - 2)
+                    self.shop_items.append({
+                        "type": "piece_mod", "key": key, "mod": mod,
+                        "cost": cost,
+                        "icon": "*",
+                        "category": "Piece Mod",
+                        "color": PIECE_MODIFIER_VISUALS[key]["color"],
+                        "name": mod.name,
+                        "description": mod.description,
+                    })
+                else:
+                    key = self.rng.choice(cell_mod_keys)
+                    tmpl = CELL_MODIFIERS[key]
+                    cost = max(1, 3 - 2)
+                    self.shop_items.append({
+                        "type": "cell_mod", "key": key,
+                        "cost": cost,
+                        "icon": tmpl["icon"],
+                        "category": "Cell Mod",
+                        "color": tmpl["color"],
+                        "name": tmpl["name"],
+                        "description": tmpl["description"],
+                    })
+
+    def _get_shop_rows(self) -> list[dict]:
+        """Build categorized rows from shop_items for multi-row display."""
+        rows = []
+        piece_mods = [(i, it) for i, it in enumerate(self.shop_items) if it["type"] == "piece_mod"]
+        board_mods = [(i, it) for i, it in enumerate(self.shop_items) if it["type"] in ("cell_mod", "border_mod")]
+        specials = [(i, it) for i, it in enumerate(self.shop_items) if it["type"] in ("tarot", "artifact")]
+
+        if piece_mods:
+            rows.append({"label": "Piece Modifiers", "items": piece_mods, "color": (200, 160, 255)})
+        if board_mods:
+            rows.append({"label": "Board Modifiers", "items": board_mods, "color": (100, 200, 100)})
+        if specials:
+            rows.append({"label": "Specials", "items": specials, "color": (255, 200, 80)})
+        return rows
+
+    def _clamp_shop_cursor(self) -> None:
+        """Clamp shop_row/shop_col after an item is removed."""
+        rows = self._get_shop_rows()
+        num_rows = len(rows)
+        if self.shop_row > num_rows:
+            self.shop_row = num_rows  # done row
+        if self.shop_row < num_rows:
+            row_len = len(rows[self.shop_row]["items"])
+            self.shop_col = min(self.shop_col, max(0, row_len - 1))
+        else:
+            self.shop_col = 0
 
     def _handle_shop(self, action: Action) -> GameState | None:
-        done_idx = next(
-            (i for i, it in enumerate(self.shop_items) if it["type"] == "done"),
-            len(self.shop_items) - 1,
-        )
+        rows = self._get_shop_rows()
+        num_rows = len(rows)
+        total_nav_rows = num_rows + 1  # +1 for done button
+
         if action == Action.MOUSE_CLICK:
             hit = self._hit_test(self.mouse_tile[0], self.mouse_tile[1])
             if hit:
-                idx = hit["index"]
                 if hit["action"] == "button":
-                    self.shop_selection = idx
-                    action = Action.CONFIRM  # fall through to CONFIRM
-                elif idx == self.shop_selection:
-                    action = Action.CONFIRM  # click already-selected card → buy
-                else:
-                    self.shop_selection = idx
-                    return None
+                    if self.shop_row >= num_rows:
+                        action = Action.CONFIRM  # already on done, confirm
+                    else:
+                        self.shop_row = num_rows
+                        self.shop_col = 0
+                        return None
+                elif hit["action"] == "card":
+                    row_idx = hit["row"]
+                    col_idx = hit["col"]
+                    if self.shop_row == row_idx and self.shop_col == col_idx:
+                        action = Action.CONFIRM  # re-click = buy
+                    else:
+                        self.shop_row = row_idx
+                        self.shop_col = col_idx
+                        return None
             else:
                 return None
-        if action == Action.DOWN:
-            if self.shop_selection != done_idx:
-                self.shop_selection = done_idx
-            return None
+
         if action == Action.UP:
-            if self.shop_selection == done_idx:
-                purchasable = [it for it in self.shop_items if it["type"] != "done"]
-                self.shop_selection = max(0, len(purchasable) - 1)
+            self.shop_row = (self.shop_row - 1) % total_nav_rows
+            if self.shop_row < num_rows:
+                self.shop_col = min(self.shop_col, len(rows[self.shop_row]["items"]) - 1)
+            else:
+                self.shop_col = 0
+            return None
+        if action == Action.DOWN:
+            self.shop_row = (self.shop_row + 1) % total_nav_rows
+            if self.shop_row < num_rows:
+                self.shop_col = min(self.shop_col, len(rows[self.shop_row]["items"]) - 1)
+            else:
+                self.shop_col = 0
             return None
         if action == Action.LEFT:
-            self.shop_selection = (self.shop_selection - 1) % len(self.shop_items)
-        elif action == Action.RIGHT:
-            self.shop_selection = (self.shop_selection + 1) % len(self.shop_items)
-        elif action == Action.CONFIRM:
-            item = self.shop_items[self.shop_selection]
-            if item["type"] == "done":
+            if self.shop_row < num_rows:
+                row_len = len(rows[self.shop_row]["items"])
+                self.shop_col = (self.shop_col - 1) % row_len
+            return None
+        if action == Action.RIGHT:
+            if self.shop_row < num_rows:
+                row_len = len(rows[self.shop_row]["items"])
+                self.shop_col = (self.shop_col + 1) % row_len
+            return None
+
+        if action == Action.CONFIRM:
+            if self.shop_row >= num_rows:
+                # Done button
                 self._generate_draft()
                 self.phase = "draft"
                 self._auto_save()
                 return None
+
+            if self.shop_row >= len(rows) or self.shop_col >= len(rows[self.shop_row]["items"]):
+                return None
+            flat_idx, item = rows[self.shop_row]["items"][self.shop_col]
 
             if self.gold < item["cost"]:
                 self.message = "Not enough gold!"
                 return None
 
             if item["type"] == "piece_mod":
-                # Check if any roster piece can receive a modifier
-                eligible = [p for p in self.roster if not p.modifiers]
+                max_mods = 2 if self._has_artifact("forge_hammer") else 1
+                eligible = [p for p in self.roster if len(p.modifiers) < max_mods]
                 if not eligible:
                     self.message = "All pieces already have modifiers!"
                     return None
@@ -1557,6 +2036,33 @@ class AutoBattler:
                 self.cursor = (3, 5)
                 self.phase = "place_border"
                 self.message = f"Place {BORDER_MODIFIERS[item['key']]['name']} on a cell (arrows + ENTER)"
+
+            elif item["type"] == "tarot":
+                tarot_data = TAROT_CARDS[item["key"]]
+                effective_slots = self.tarot_slots + self._artifact_count("heretics_tome")
+                if len(self.tarot_cards) < effective_slots:
+                    self.gold -= item["cost"]
+                    self.tarot_cards.append(dict(tarot_data))
+                    self.message = f"Acquired {tarot_data['name']}!"
+                    self.shop_items.pop(flat_idx)
+                    self._clamp_shop_cursor()
+                else:
+                    self.gold -= item["cost"]
+                    self.placing_item = item
+                    self.roster_selection = 0
+                    self.phase = "swap_tarot"
+                    self.message = "Slots full! Pick a tarot to replace (1-9, ENTER) or ESC to cancel."
+
+            elif item["type"] == "artifact":
+                artifact_data = ARTIFACTS[item["key"]]
+                if len(self.artifacts) < self.artifact_slots:
+                    self.gold -= item["cost"]
+                    self.artifacts.append(dict(artifact_data))
+                    self.message = f"Acquired {artifact_data['name']}!"
+                    self.shop_items.pop(flat_idx)
+                    self._clamp_shop_cursor()
+                else:
+                    self.message = f"Artifact slots full! ({len(self.artifacts)}/{self.artifact_slots})"
 
         elif action == Action.CANCEL:
             self._generate_draft()
@@ -1636,7 +2142,8 @@ class AutoBattler:
         """Pick a roster piece to receive the purchased piece modifier."""
         if action == Action.MOUSE_CLICK:
             action = Action.CONFIRM
-        eligible = [p for p in self.roster if not p.modifiers]
+        max_mods = 2 if self._has_artifact("forge_hammer") else 1
+        eligible = [p for p in self.roster if len(p.modifiers) < max_mods]
         if not eligible:
             self.placing_item = None
             self.phase = "shop"
@@ -1664,6 +2171,46 @@ class AutoBattler:
                 self.message = f"Applied {mod.name} to {piece.piece_type.value}!"
                 self.placing_item = None
                 self.phase = "shop"
+        elif action == Action.CANCEL:
+            self.gold += self.placing_item["cost"]
+            self.placing_item = None
+            self.phase = "shop"
+            self.message = "Cancelled — gold refunded."
+        return None
+
+    def _handle_swap_tarot(self, action: Action) -> GameState | None:
+        """Pick which held tarot to replace with the newly purchased one."""
+        if action == Action.MOUSE_CLICK:
+            action = Action.CONFIRM
+        num_actions = {
+            Action.NUM_1: 0, Action.NUM_2: 1, Action.NUM_3: 2,
+            Action.NUM_4: 3, Action.NUM_5: 4,
+        }
+        if action in num_actions:
+            idx = num_actions[action]
+            if idx < len(self.tarot_cards):
+                self.roster_selection = idx
+                self.message = f"Replace {self.tarot_cards[idx]['name']}? ENTER to confirm."
+        elif action in (Action.LEFT, Action.UP):
+            self.roster_selection = (self.roster_selection - 1) % len(self.tarot_cards)
+        elif action in (Action.RIGHT, Action.DOWN):
+            self.roster_selection = (self.roster_selection + 1) % len(self.tarot_cards)
+        elif action == Action.CONFIRM:
+            if self.roster_selection < len(self.tarot_cards):
+                old_name = self.tarot_cards[self.roster_selection]["name"]
+                new_tarot = TAROT_CARDS[self.placing_item["key"]]
+                self.tarot_cards[self.roster_selection] = dict(new_tarot)
+                self.message = f"Replaced {old_name} with {new_tarot['name']}!"
+                # Remove the tarot from shop items
+                try:
+                    shop_idx = next(i for i, it in enumerate(self.shop_items)
+                                    if it.get("key") == self.placing_item["key"] and it["type"] == "tarot")
+                    self.shop_items.pop(shop_idx)
+                except StopIteration:
+                    pass
+                self.placing_item = None
+                self.phase = "shop"
+                self._clamp_shop_cursor()
         elif action == Action.CANCEL:
             self.gold += self.placing_item["cost"]
             self.placing_item = None
@@ -1753,6 +2300,8 @@ class AutoBattler:
             self._render_placement(console)
         elif self.phase == "place_piece_mod":
             self._render_place_piece_mod(console)
+        elif self.phase == "swap_tarot":
+            self._render_swap_tarot(console)
         elif self.phase == "draft":
             self._render_draft(console)
         elif self.phase == "boss_intro":
@@ -1817,6 +2366,15 @@ class AutoBattler:
         if self.held_piece:
             info_lines.append("")
             info_lines.append(f"Holding: {self.held_piece.piece_type.value}")
+        # Tarot / Artifact summary
+        if self.tarot_cards:
+            info_lines.append("")
+            for t in self.tarot_cards:
+                info_lines.append(f"T: {t['name']}")
+        if self.artifacts:
+            info_lines.append("")
+            for a in self.artifacts:
+                info_lines.append(f"A: {a['name']}")
 
         panel_h = len(info_lines) + 2
         renderer.draw_panel(
@@ -1913,6 +2471,13 @@ class AutoBattler:
         if self.manual_mode and self.battle_player_turn and self.selected_piece:
             status_lines.append("")
             status_lines.append(f"Selected: {self.selected_piece.piece_type.value}")
+        # Compact tarot/artifact list
+        if self.tarot_cards or self.artifacts:
+            status_lines.append("")
+            for t in self.tarot_cards:
+                status_lines.append(f"T:{t['name']}")
+            for a in self.artifacts:
+                status_lines.append(f"A:{a['name']}")
 
         panel_h = len(status_lines) + 2
         renderer.draw_panel(
@@ -1962,9 +2527,9 @@ class AutoBattler:
 
         # Controls message
         if self.manual_mode and self.battle_player_turn:
-            renderer.draw_message(console, "Click/Enter: select & move  |  Esc: deselect/skip  |  Tab: auto mode")
+            renderer.draw_message(console, "Click/Enter: move | Esc: skip | Tab: auto")
         else:
-            renderer.draw_message(console, "ENTER: step  |  ESC: skip to end  |  Tab: manual mode")
+            renderer.draw_message(console, "Enter: step | Esc: skip | Tab: manual")
 
     def _render_result(self, console: tcod.console.Console) -> None:
         lay = self._draw_board_centered(console)
@@ -2051,97 +2616,155 @@ class AutoBattler:
         # Fill entire screen with felt green
         console.draw_rect(0, 0, cw, ch, ch=ord(' '), bg=renderer.BG_FELT)
 
-        # Separate purchasable items from "done"
-        purchasable = [it for it in self.shop_items if it["type"] != "done"]
-        done_idx = next(
-            (i for i, it in enumerate(self.shop_items) if it["type"] == "done"),
-            len(self.shop_items) - 1,
+        rows = self._get_shop_rows()
+        num_sections = len(rows)
+
+        # Compute layout width
+        total_w = min(cw - 4, 80)
+        start_x = max(1, (cw - total_w) // 2)
+
+        # --- Held items bar at top ---
+        held_bar_y = 1
+        effective_slots = self.tarot_slots + self._artifact_count("heretics_tome")
+        held_bar_h = renderer.draw_held_items_bar(
+            console, start_x, held_bar_y, total_w,
+            self.tarot_cards, self.artifacts,
+            effective_slots, self.artifact_slots,
         )
 
-        # Compute card dimensions
-        num_cards = max(1, len(purchasable))
-        gap = 3  # columns between cards (room for shadows + breathing)
-        card_w = min(22, max(14, (cw - 6 - gap * (num_cards - 1)) // num_cards))
-        total_w = card_w * num_cards + gap * (num_cards - 1)
-        start_x = (cw - total_w) // 2
-
-        # Fixed card height — banner + icon(3) + name + sep + desc(3) + borders
-        card_h = 12
-
-        # Compute total content height to vertically center:
-        # header(2) + gap(1) + cards(card_h) + shadow(1) + price(1) + gap(1) + roster(1) + gap(1) + button(3) = card_h + 11
-        content_h = card_h + 11
-        # Top margin: center the block, leave room for controls at bottom
-        top_y = max(1, (ch - content_h - 2) // 2)
-
         # --- Header bar ---
+        header_y = held_bar_y + held_bar_h + 1
         renderer.draw_shop_header(
-            console, y=top_y, width=total_w, start_x=start_x,
+            console, y=header_y, width=total_w, start_x=start_x,
             gold=self.gold, wave=self.wave,
             wins=self.wins, losses=self.losses,
         )
 
-        # --- Card row ---
-        cards_y = top_y + 3
-        for i, item in enumerate(purchasable):
-            cx = start_x + i * (card_w + gap)
-            sel = (i == self.shop_selection)
-            affordable = (self.gold >= item["cost"])
-            renderer.draw_shop_card(
-                console, cx, cards_y, card_w, card_h,
-                icon=item["icon"],
-                name=item["name"],
-                description=item["description"],
-                category=item["category"],
-                color=item["color"],
-                selected=sel,
-                affordable=affordable,
-            )
+        # --- Vertical budget for card sections ---
+        content_top = header_y + 2
+        button_h = 3
+        controls_h = 2
+        avail_h = ch - content_top - button_h - controls_h - 1
 
-            # Price tag below card (skip shadow row)
-            renderer.draw_shop_price_tag(
-                console, cx, cards_y + card_h + 1, card_w,
-                cost=item["cost"], affordable=affordable,
-            )
+        if num_sections > 0:
+            section_h = avail_h // num_sections
+        else:
+            section_h = avail_h
+        card_h = max(7, min(10, section_h - 2))  # 2 = label + price row
 
-            # Register click region for this card
-            self._click_regions.append({
-                "x": cx, "y": cards_y, "w": card_w, "h": card_h,
-                "index": i, "action": "card",
-            })
+        # --- Draw each section ---
+        cur_y = content_top
+        for row_idx, row in enumerate(rows):
+            # Section label
+            renderer.draw_shop_section_label(
+                console, cur_y, total_w, start_x,
+                row["label"], row["color"],
+            )
+            cur_y += 1
+
+            # Cards in this row
+            items = row["items"]
+            num_cards = len(items)
+            gap = 2
+            card_w = min(18, max(12, (total_w - gap * max(0, num_cards - 1)) // max(1, num_cards)))
+            cards_total_w = card_w * num_cards + gap * max(0, num_cards - 1)
+            cards_x = start_x + (total_w - cards_total_w) // 2
+
+            for col_idx, (flat_idx, item) in enumerate(items):
+                cx = cards_x + col_idx * (card_w + gap)
+                sel = (row_idx == self.shop_row and col_idx == self.shop_col)
+                affordable = (self.gold >= item["cost"])
+
+                renderer.draw_shop_card(
+                    console, cx, cur_y, card_w, card_h,
+                    icon=item["icon"],
+                    name=item["name"],
+                    description=item["description"],
+                    category=item["category"],
+                    color=item["color"],
+                    selected=sel,
+                    affordable=affordable,
+                )
+
+                renderer.draw_shop_price_tag(
+                    console, cx, cur_y + card_h, card_w,
+                    cost=item["cost"], affordable=affordable,
+                )
+
+                self._click_regions.append({
+                    "x": cx, "y": cur_y, "w": card_w, "h": card_h,
+                    "row": row_idx, "col": col_idx,
+                    "index": flat_idx, "action": "card",
+                })
+
+            cur_y += card_h + 2  # card + price row + gap
 
         # --- Roster summary ---
-        roster_y = cards_y + card_h + 3
         counts: dict[str, int] = {}
         for p in self.roster:
             name = p.piece_type.value
             counts[name] = counts.get(name, 0) + 1
         roster_str = "Roster: " + ", ".join(f"{v}x {k}" for k, v in counts.items())
+        if len(roster_str) > total_w:
+            roster_str = roster_str[:total_w]
         rx = start_x + (total_w - len(roster_str)) // 2
-        console.print(max(0, rx), roster_y, roster_str, fg=renderer.FG_DIM, bg=renderer.BG_FELT)
+        console.print(max(0, rx), cur_y, roster_str, fg=renderer.FG_DIM, bg=renderer.BG_FELT)
+        cur_y += 1
 
         # --- "Next Round" done button ---
-        done_y = roster_y + 2
-        done_selected = (self.shop_selection == done_idx)
+        done_y = max(cur_y, ch - button_h - controls_h - 1)
+        done_selected = (self.shop_row >= num_sections)
         renderer.draw_shop_done_button(
             console, done_y, width=total_w, start_x=start_x,
             selected=done_selected,
         )
         self._click_regions.append({
             "x": start_x, "y": done_y, "w": total_w, "h": 3,
-            "index": done_idx, "action": "button",
+            "action": "button",
         })
 
         # --- Controls hint (bottom) ---
-        controls = "Left/Right: browse  |  Enter: buy  |  Esc: skip"
+        controls = "L/R: browse | U/D: section | Enter: buy | Esc: skip"
+        if len(controls) > cw - 2:
+            controls = controls[:cw - 2]
         cx = (cw - len(controls)) // 2
         console.print(max(0, cx), ch - 2, controls, fg=renderer.FG_DIM, bg=renderer.BG_FELT)
 
         # Message bar
         if self.message:
             msg = self.message
+            if len(msg) > cw - 2:
+                msg = msg[:cw - 2]
             mx = (cw - len(msg)) // 2
             console.print(max(0, mx), ch - 1, msg, fg=renderer.FG_TEXT, bg=renderer.BG_FELT)
+
+    def _render_swap_tarot(self, console: tcod.console.Console) -> None:
+        """Render tarot swap screen when slots are full."""
+        cw, ch = console.width, console.height
+        pw = min(55, cw - 4)
+        px = (cw - pw) // 2
+        py = max(2, ch // 2 - 8)
+
+        if self.placing_item:
+            new_name = TAROT_CARDS[self.placing_item["key"]]["name"]
+        else:
+            new_name = "?"
+
+        lines = [
+            f"New: {new_name}",
+            "",
+            "Pick a tarot to replace (1-9, arrows + ENTER):",
+            "ESC to cancel (refund)",
+            "",
+        ]
+        for i, t in enumerate(self.tarot_cards):
+            marker = ">" if i == self.roster_selection else " "
+            lines.append(f" {marker} [{i+1}] {t['name']}: {t['description']}")
+
+        renderer.draw_panel(console, px, py, pw, len(lines) + 2, "Swap Tarot", lines)
+
+        if self.message:
+            renderer.draw_message(console, self.message)
 
     def _render_placement(self, console: tcod.console.Console) -> None:
         """Render board with cursor for placing cell/border modifier."""
@@ -2175,7 +2798,8 @@ class AutoBattler:
         """Render roster selection for applying a piece modifier."""
         cw, ch = console.width, console.height
 
-        eligible = [p for p in self.roster if not p.modifiers]
+        max_mods = 2 if self._has_artifact("forge_hammer") else 1
+        eligible = [p for p in self.roster if len(p.modifiers) < max_mods]
         if self.placing_item:
             mod_name = self.placing_item["mod"].name
         else:
@@ -2291,6 +2915,8 @@ class AutoBattler:
         # Roster summary
         roster_y = cards_y + card_h + 2
         roster_str = "Roster: " + ", ".join(f"{v}x {k}" for k, v in roster_summary.items())
+        if len(roster_str) > total_w:
+            roster_str = roster_str[:total_w]
         rx = start_x + (total_w - len(roster_str)) // 2
         console.print(max(0, rx), roster_y, roster_str, fg=renderer.FG_DIM, bg=renderer.BG_FELT)
 
@@ -2310,13 +2936,17 @@ class AutoBattler:
         })
 
         # Controls hint
-        controls = "Left/Right: browse  |  Enter: pick  |  Esc: skip"
+        controls = "L/R: browse | Enter: pick | Esc: skip"
+        if len(controls) > cw - 2:
+            controls = controls[:cw - 2]
         cx = (cw - len(controls)) // 2
         console.print(max(0, cx), ch - 2, controls, fg=renderer.FG_DIM, bg=renderer.BG_FELT)
 
         # Message bar
         if self.message:
             msg = self.message
+            if len(msg) > cw - 2:
+                msg = msg[:cw - 2]
             mx = (cw - len(msg)) // 2
             console.print(max(0, mx), ch - 1, msg, fg=renderer.FG_TEXT, bg=renderer.BG_FELT)
 

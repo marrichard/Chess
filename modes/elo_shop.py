@@ -20,6 +20,8 @@ SHOP_CATALOG = [
     {"key": "extra_piece", "category": "Upgrade", "name": "+1 Roster Slot", "cost": 400, "desc": "Start with 1 extra piece"},
     {"key": "start_gold",  "category": "Upgrade", "name": "+5 Gold",        "cost": 250, "desc": "Start battles with +5 gold"},
     {"key": "extra_life",  "category": "Upgrade", "name": "+1 Life",        "cost": 800, "desc": "Gain an extra life in tournaments"},
+    {"key": "tarot_slot",  "category": "Upgrade", "name": "+1 Tarot Slot",  "cost": 500, "desc": "Hold an additional Tarot card"},
+    {"key": "artifact_slot", "category": "Upgrade", "name": "+1 Artifact Slot", "cost": 600, "desc": "Hold an additional Artifact"},
 ]
 
 CATEGORY_COLORS = {
@@ -108,6 +110,37 @@ class EloShop:
             self.message = f"Purchased {item['name']} (Lv.{level})!"
         else:
             self.message = f"Unlocked {item['name']}!"
+
+    def _update_cursor_from_board(self, bx: int, by: int) -> None:
+        """No-op for ELO shop (no board)."""
+        pass
+
+    def to_render_state(self) -> dict:
+        """Serialize state for JS rendering."""
+        items = []
+        for item in SHOP_CATALOG:
+            owned = self._is_owned(item) and item["category"] != "Upgrade"
+            cost = self._effective_cost(item)
+            level = self._upgrade_level(item)
+            items.append({
+                "key": item["key"],
+                "category": item["category"],
+                "name": item["name"],
+                "cost": cost,
+                "desc": item["desc"],
+                "owned": owned,
+                "level": level,
+                "affordable": self.save_data.elo >= cost and not owned,
+                "icon": self._get_icon(item),
+                "color": list(CATEGORY_COLORS.get(item["category"], (200, 200, 200))),
+            })
+        return {
+            "phase": "elo_shop",
+            "elo": self.save_data.elo,
+            "items": items,
+            "selection": self.selection,
+            "message": self.message,
+        }
 
     def render(self, console: tcod.console.Console) -> None:
         cw, ch = console.width, console.height
@@ -219,14 +252,17 @@ class EloShop:
         )
 
         # Controls
-        controls = "Left/Right: browse  |  Enter: purchase  |  Esc: back"
+        controls = "L/R: browse | Enter: buy | Esc: back"
+        if len(controls) > cw - 2:
+            controls = controls[:cw - 2]
         ccx = (cw - len(controls)) // 2
         console.print(max(0, ccx), ch - 2, controls, fg=renderer.FG_DIM, bg=renderer.BG_FELT)
 
         # Message
         if self.message:
-            mx = (cw - len(self.message)) // 2
-            console.print(max(0, mx), ch - 1, self.message,
+            msg = self.message[:cw - 2] if len(self.message) > cw - 2 else self.message
+            mx = (cw - len(msg)) // 2
+            console.print(max(0, mx), ch - 1, msg,
                           fg=renderer.FG_TEXT, bg=renderer.BG_FELT)
 
     def _get_icon(self, item: dict) -> str:
@@ -235,5 +271,6 @@ class EloShop:
             "rook": "\u265c", "queen": "\u265b", "king": "\u265a",
             "piercing": "\u2694", "royal": "\u2654",
             "extra_piece": "+", "start_gold": "$", "extra_life": "\u2665",
+            "tarot_slot": "\u2605", "artifact_slot": "\u2726",
         }
         return icons.get(item["key"], "?")

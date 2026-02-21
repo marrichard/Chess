@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Roguelike</title>
+  <link rel="stylesheet" href="game.css">
+</head>
+<body>
+  <div id="bg-effects"></div>
+  <canvas id="particles"></canvas>
+
+  <!-- Board phases (setup, battle, placement) share the board layout -->
+  <div id="board-view" class="phase">
+    <div id="top-bar">
+      <div id="status-left">
+        <span id="stat-wave">Wave 1</span>
+        <span class="sep">|</span>
+        <span id="stat-record">0W / 0L</span>
+        <span class="sep">|</span>
+        <span id="stat-lives">Lives: 3</span>
+        <span class="sep">|</span>
+        <span id="stat-gold" class="gold">0g</span>
+      </div>
+      <div id="status-right">
+        <span id="stat-mode"></span>
+        <span id="stat-difficulty"></span>
+      </div>
+    </div>
+
+    <div id="board-area">
+      <div id="left-panel">
+        <div id="tarot-list" class="panel-section">
+          <div class="panel-label">Tarots</div>
+          <div id="tarot-items"></div>
+        </div>
+        <div id="artifact-list" class="panel-section">
+          <div class="panel-label">Artifacts</div>
+          <div id="artifact-items"></div>
+        </div>
+      </div>
+
+      <div id="board-container">
+        <div id="board"></div>
+      </div>
+
+      <div id="right-panel">
+        <div id="battle-log-container" class="panel-section">
+          <div class="panel-label">Battle Log</div>
+          <div id="battle-log"></div>
+        </div>
+        <div id="controls-hint" class="panel-section">
+          <div id="controls-text"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="roster-bar">
+      <div class="panel-label">Roster</div>
+      <div id="roster-items"></div>
+    </div>
+
+    <div id="message-bar"></div>
+  </div>
+
+  <!-- Result phase -->
+  <div id="result-view" class="phase">
+    <div class="overlay-card">
+      <h2 id="result-title">Battle Result</h2>
+      <div id="result-body"></div>
+      <div class="overlay-hint">Press ENTER or click to continue</div>
+    </div>
+  </div>
+
+  <!-- Shop phase -->
+  <div id="shop-view" class="phase">
+    <div class="shop-header">
+      <h2>Shop</h2>
+      <div id="shop-gold" class="gold"></div>
+    </div>
+    <div id="shop-rows"></div>
+    <div id="shop-done-btn" class="action-btn">Done Shopping</div>
+    <div id="shop-message" class="phase-message"></div>
+  </div>
+
+  <!-- Draft phase -->
+  <div id="draft-view" class="phase">
+    <h2>Draft</h2>
+    <div id="draft-cards"></div>
+    <div id="draft-skip-btn" class="action-btn">Skip &rarr; Next Wave</div>
+    <div id="draft-message" class="phase-message"></div>
+  </div>
+
+  <!-- Place Cell / Border / Piece Mod overlay -->
+  <div id="placement-view" class="phase">
+    <div id="placement-board-area">
+      <div id="placement-board-container">
+        <div id="placement-board"></div>
+      </div>
+    </div>
+    <div id="placement-message" class="phase-message"></div>
+    <div id="placement-hint" class="overlay-hint">Arrows to move cursor, ENTER to place, ESC to cancel</div>
+  </div>
+
+  <!-- Place piece mod (roster selection) -->
+  <div id="piece-mod-view" class="phase">
+    <div class="overlay-card wide">
+      <h2>Apply Modifier</h2>
+      <div id="piece-mod-name"></div>
+      <div id="piece-mod-roster"></div>
+      <div class="overlay-hint">1-9 or arrows to select, ENTER to apply, ESC to cancel</div>
+    </div>
+  </div>
+
+  <!-- Swap tarot -->
+  <div id="swap-tarot-view" class="phase">
+    <div class="overlay-card wide">
+      <h2>Replace Tarot</h2>
+      <div id="swap-tarot-new"></div>
+      <div id="swap-tarot-cards"></div>
+      <div class="overlay-hint">1-9 or arrows to select, ENTER to replace, ESC to cancel</div>
+    </div>
+  </div>
+
+  <!-- Boss intro -->
+  <div id="boss-intro-view" class="phase">
+    <div class="overlay-card">
+      <div id="boss-icon" class="boss-icon"></div>
+      <h2 id="boss-title">Boss Battle</h2>
+      <div id="boss-mods"></div>
+      <div class="overlay-hint">Press ENTER to begin</div>
+    </div>
+  </div>
+
+  <!-- Tournament end -->
+  <div id="tournament-end-view" class="phase">
+    <div class="overlay-card">
+      <h2 id="tournament-result-title">Tournament Complete</h2>
+      <div id="tournament-stats"></div>
+      <div id="tournament-elo" class="gold"></div>
+      <div class="overlay-hint">ENTER: Menu | SPACE: Play Again</div>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="game-over-view" class="phase">
+    <div class="overlay-card">
+      <h2 class="defeat-title">Game Over</h2>
+      <div id="game-over-stats"></div>
+      <div class="overlay-hint">ENTER: Menu | SPACE: Play Again</div>
+    </div>
+  </div>
+
+  <!-- ELO shop -->
+  <div id="elo-shop-view" class="phase">
+    <h2>ELO Shop</h2>
+    <div id="elo-balance" class="gold"></div>
+    <div id="elo-shop-cards"></div>
+    <div id="elo-shop-message" class="phase-message"></div>
+    <div class="overlay-hint">Left/Right to browse, ENTER to buy, ESC to return to menu</div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
