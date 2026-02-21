@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Save files
+save_data.json
+continue_run.json
+
+# Screenshots / debug images
+*.png
+
+# IDE
+.vscode/
+.idea/
