@@ -493,6 +493,74 @@ body {
   100% { opacity: 0; transform: scale(1.05); }
 }
 
+/* Dead zone — collapsed cells from sudden death */
+.cell.dead-zone {
+  background: #08080e !important;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.9) !important;
+  border-color: #0a0a12 !important;
+  cursor: default;
+  pointer-events: none;
+}
+
+.cell.dead-zone::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(80, 0, 0, 0.25) 0%, transparent 60%),
+    radial-gradient(circle at 70% 60%, rgba(50, 0, 0, 0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.cell.dead-zone .piece,
+.cell.dead-zone .hp-bar,
+.cell.dead-zone .hp-text,
+.cell.dead-zone .cell-mod-overlay {
+  display: none;
+}
+
+/* Warning zone — cells about to be destroyed */
+.cell.warning-zone {
+  animation: warningPulse 1s ease-in-out infinite;
+}
+
+@keyframes warningPulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 40, 40, 0.2); }
+  50%      { box-shadow: inset 0 0 0 2px rgba(255, 40, 40, 0.7), inset 0 0 8px rgba(255, 0, 0, 0.25); }
+}
+
+/* Sudden death announcement */
+.sudden-death-announce {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: #ff2222;
+  text-shadow: 0 0 40px rgba(255, 0, 0, 0.6), 0 0 80px rgba(255, 0, 0, 0.3);
+  z-index: 50;
+  pointer-events: none;
+  animation: suddenDeathAnnounce 2s ease forwards;
+  letter-spacing: 0.15em;
+}
+
+@keyframes suddenDeathAnnounce {
+  0%   { opacity: 0; transform: scale(0.5); }
+  15%  { opacity: 1; transform: scale(1.1); }
+  25%  { transform: scale(1.0); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+
+/* Battle log sudden death entries */
+#battle-log .sudden-death-log {
+  color: #ff4444;
+  font-weight: bold;
+  text-shadow: 0 0 4px rgba(255, 0, 0, 0.3);
+}
+
 /* ================================================================
    SHOP
    ================================================================ */
@@ -946,8 +1014,12 @@ body {
 #tooltip .tt-team { font-size: 0.7rem; margin-bottom: 4px; }
 #tooltip .tt-team.player { color: #5082ff; }
 #tooltip .tt-team.enemy { color: #ff4646; }
+#tooltip .tt-move { color: #9a9ab0; font-size: 0.7rem; margin-bottom: 2px; }
+#tooltip .tt-ability { color: #c0b8d8; font-size: 0.7rem; font-style: italic; margin-bottom: 2px; }
+#tooltip .tt-stats { color: #e0e0e0; font-size: 0.72rem; font-family: 'Courier New', monospace; letter-spacing: 0.02em; }
+#tooltip .tt-sep { border-top: 1px solid rgba(180, 142, 255, 0.2); margin: 5px 0; }
 #tooltip .tt-mod { color: #ffa; font-size: 0.7rem; }
-#tooltip .tt-desc { color: #aaa; font-size: 0.7rem; margin-top: 4px; }
+#tooltip .tt-desc { color: #aaa; font-size: 0.7rem; margin-top: 2px; margin-bottom: 2px; }
 
 /* ================================================================
    ELO CATEGORY HEADERS

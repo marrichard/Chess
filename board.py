@@ -20,9 +20,10 @@ class Board:
     blocked_tiles: set[tuple[int, int]] = field(default_factory=set)
     cell_modifiers: dict[tuple[int, int], CellModifier] = field(default_factory=dict)
     border_modifiers: dict[tuple[int, int], BorderModifier] = field(default_factory=dict)
+    dead_zone: set[tuple[int, int]] = field(default_factory=set)
 
     def in_bounds(self, x: int, y: int) -> bool:
-        return 0 <= x < self.width and 0 <= y < self.height
+        return 0 <= x < self.width and 0 <= y < self.height and (x, y) not in self.dead_zone
 
     def is_empty(self, x: int, y: int) -> bool:
         if (x, y) in self.blocked_tiles:
@@ -404,6 +405,7 @@ class Board:
         self.pieces.clear()
         self.blocked_tiles.clear()
         self.cell_modifiers.clear()
+        self.dead_zone.clear()
         # Note: border_modifiers persist across rounds, not cleared here
 
     def add_obstacle(self, x: int, y: int) -> None:
@@ -433,4 +435,184 @@ class Board:
         new_board.blocked_tiles = set(self.blocked_tiles)
         new_board.cell_modifiers = {k: v.copy() for k, v in self.cell_modifiers.items()}
         new_board.border_modifiers = {k: v.copy() for k, v in self.border_modifiers.items()}
+        new_board.dead_zone = set(self.dead_zone)
         return new_board
+
+    # --- Sudden Death: ring collapse ---
+
+    def _ring_cells(self, ring: int) -> list[tuple[int, int]]:
+        """Return all cells at ring distance `ring` from the board edge.
+        Ring 0 = outermost edge, ring 1 = next layer in, etc."""
+        cells = []
+        d = ring
+        for x in range(d, self.width - d):
+            for y in range(d, self.height - d):
+                if x == d or x == self.width - 1 - d or y == d or y == self.height - 1 - d:
+                    cells.append((x, y))
+        return cells
+
+    def get_warning_cells(self, next_ring: int) -> set[tuple[int, int]]:
+        """Return cells that will be closed in the next ring closure."""
+        max_ring = min(self.width, self.height) // 2
+        if next_ring < 0 or next_ring >= max_ring:
+            return set()
+        return set(self._ring_cells(next_ring)) - self.dead_zone
+
+    def _push_direction(self, x: int, y: int, ring: int) -> tuple[int, int]:
+        """Determine push direction (dx, dy) for a piece on the given ring.
+        Pushes toward the board center."""
+        cx = self.width / 2.0
+        cy = self.height / 2.0
+        dx = 0
+        dy = 0
+        if x == ring:
+            dx = 1
+        elif x == self.width - 1 - ring:
+            dx = -1
+        if y == ring:
+            dy = 1
+        elif y == self.height - 1 - ring:
+            dy = -1
+        # For corners (both dx and dy set), pick the axis with more room
+        if dx != 0 and dy != 0:
+            room_x = abs(cx - (x + dx))
+            room_y = abs(cy - (y + dy))
+            if room_x >= room_y:
+                dy = 0  # push horizontally
+            else:
+                dx = 0  # push vertically
+        return (dx, dy)
+
+    def close_ring(self, ring: int) -> tuple[list[Piece], list[Piece]]:
+        """Close ring `ring` of the board. Pushes pieces inward.
+        Returns (killed_by_squeeze, all_pushed) lists."""
+        cells = self._ring_cells(ring)
+        new_dead = set()
+        for (x, y) in cells:
+            if (x, y) in self.dead_zone:
+                continue
+            new_dead.add((x, y))
+
+        # Collect pieces that need pushing
+        to_push: list[Piece] = []
+        for (x, y) in new_dead:
+            piece = self.get_piece_at(x, y)
+            if piece and piece.alive:
+                to_push.append(piece)
+
+        # Mark cells as dead BEFORE placing (so push destinations exclude dead cells)
+        for (x, y) in new_dead:
+            self.dead_zone.add((x, y))
+            self.blocked_tiles.add((x, y))
+            # Remove modifiers
+            self.cell_modifiers.pop((x, y), None)
+            self.border_modifiers.pop((x, y), None)
+
+        # Push each piece inward
+        pushed: list[Piece] = []
+        squeeze_list: list[Piece] = []
+
+        for piece in to_push:
+            placed = self._try_push_piece(piece, ring)
+            if placed:
+                pushed.append(piece)
+            else:
+                squeeze_list.append(piece)
+
+        # Squeeze mode: damage squeezed pieces until enough die to fit
+        killed: list[Piece] = []
+        if squeeze_list:
+            killed = self._resolve_squeeze(squeeze_list, ring)
+
+        return (killed, pushed)
+
+    def _try_push_piece(self, piece: Piece, ring: int) -> bool:
+        """Try to push a piece inward. Returns True if placed."""
+        # 1) Try primary push direction (line along axis toward center)
+        dx, dy = self._push_direction(piece.x, piece.y, ring)
+        nx, ny = piece.x + dx, piece.y + dy
+        for _ in range(max(self.width, self.height)):
+            if not (0 <= nx < self.width and 0 <= ny < self.height):
+                break
+            if (nx, ny) in self.dead_zone:
+                break
+            if self.get_piece_at(nx, ny) is None and (nx, ny) not in self.blocked_tiles:
+                piece.x = nx
+                piece.y = ny
+                return True
+            nx += dx
+            ny += dy
+
+        # 2) Try all adjacent cells (including diagonals), sorted by distance to center
+        cx, cy = self.width / 2.0, self.height / 2.0
+        adjacents = []
+        for adx in (-1, 0, 1):
+            for ady in (-1, 0, 1):
+                if adx == 0 and ady == 0:
+                    continue
+                ax, ay = piece.x + adx, piece.y + ady
+                if (0 <= ax < self.width and 0 <= ay < self.height
+                        and (ax, ay) not in self.dead_zone
+                        and (ax, ay) not in self.blocked_tiles
+                        and self.get_piece_at(ax, ay) is None):
+                    dist = abs(ax - cx) + abs(ay - cy)
+                    adjacents.append((dist, ax, ay))
+        adjacents.sort()
+        if adjacents:
+            _, ax, ay = adjacents[0]
+            piece.x = ax
+            piece.y = ay
+            return True
+
+        # 3) Find nearest empty cell on the entire surviving board
+        best = None
+        best_dist = float('inf')
+        for bx in range(self.width):
+            for by in range(self.height):
+                if ((bx, by) not in self.dead_zone
+                        and (bx, by) not in self.blocked_tiles
+                        and self.get_piece_at(bx, by) is None):
+                    dist = abs(bx - piece.x) + abs(by - piece.y)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best = (bx, by)
+        if best:
+            piece.x, piece.y = best
+            return True
+
+        return False
+
+    def _resolve_squeeze(self, squeeze_list: list[Piece], ring: int) -> list[Piece]:
+        """Damage squeezed pieces until enough die to free up space."""
+        killed: list[Piece] = []
+        max_iters = 50  # safety
+
+        for _ in range(max_iters):
+            # Try to place each remaining squeezed piece
+            still_stuck: list[Piece] = []
+            for piece in squeeze_list:
+                if not piece.alive:
+                    continue
+                if self._try_push_piece(piece, ring):
+                    pass  # placed successfully
+                else:
+                    still_stuck.append(piece)
+
+            if not still_stuck:
+                break
+
+            # All still-stuck pieces take 1 damage
+            for piece in still_stuck:
+                piece.hp -= 1
+                if piece.hp <= 0:
+                    piece.alive = False
+                    killed.append(piece)
+
+            # Remove dead from squeeze list and board
+            squeeze_list = [p for p in still_stuck if p.alive]
+            self.pieces = [p for p in self.pieces if p.alive]
+
+            if not squeeze_list:
+                break
+
+        return killed

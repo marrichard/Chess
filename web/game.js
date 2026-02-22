@@ -220,6 +220,9 @@ function handleAutoBattle(state) {
 
   // In battle phase, auto-step when not manual mode or on enemy turn
   if (state.phase === 'battle') {
+    // Speed up during sudden death — halve the delay
+    const speed = state.suddenDeath ? Math.max(100, Math.floor(battleSpeedMs / 2)) : battleSpeedMs;
+
     if (!state.manualMode) {
       // Full auto: step at configured speed
       autoBattleTimer = setTimeout(async () => {
@@ -227,7 +230,7 @@ function handleAutoBattle(state) {
           const result = await pywebview.api.send_action('CONFIRM', -1, -1);
           handleStateUpdate(result);
         } catch (e) { console.error(e); }
-      }, battleSpeedMs);
+      }, speed);
     } else if (!state.playerTurn) {
       // Manual mode but enemy turn: auto-step enemy
       autoBattleTimer = setTimeout(async () => {
@@ -235,7 +238,7 @@ function handleAutoBattle(state) {
           const result = await pywebview.api.send_action('CONFIRM', -1, -1);
           handleStateUpdate(result);
         } catch (e) { console.error(e); }
-      }, battleSpeedMs);
+      }, speed);
     }
   }
 }
@@ -350,6 +353,25 @@ function detectAnimations(oldSt, newSt) {
   if (oldSt.wave !== undefined && newSt.wave !== undefined && newSt.wave > oldSt.wave && newSt.phase === 'setup') {
     showWaveAnnouncement(newSt.wave);
   }
+
+  // Sudden death announcement
+  if (!oldSt.suddenDeath && newSt.suddenDeath) {
+    showSuddenDeathAnnouncement();
+  }
+
+  // Ring collapse — spawn particles on newly dead cells
+  if (oldSt.board && newSt.board && (newSt.suddenDeathRing || 0) > (oldSt.suddenDeathRing || 0)) {
+    for (let y = 0; y < (newSt.boardHeight || 8); y++) {
+      for (let x = 0; x < (newSt.boardWidth || 8); x++) {
+        const oldCell = oldSt.board[y] && oldSt.board[y][x];
+        const newCell = newSt.board[y] && newSt.board[y][x];
+        if (oldCell && !oldCell.deadZone && newCell && newCell.deadZone) {
+          spawnCollapseBurst(x, y);
+        }
+      }
+    }
+    triggerShake();
+  }
 }
 
 function spawnDamagePopup(boardX, boardY, delta) {
@@ -383,6 +405,38 @@ function showWaveAnnouncement(wave) {
   el.textContent = 'WAVE ' + wave;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 1300);
+}
+
+function showSuddenDeathAnnouncement() {
+  const existing = document.querySelector('.sudden-death-announce');
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.className = 'sudden-death-announce';
+  el.textContent = 'SUDDEN DEATH';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+function spawnCollapseBurst(boardX, boardY) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 40;
+    const life = 0.4 + Math.random() * 0.4;
+    particles.push({
+      x: pos.x + (Math.random() - 0.5) * 20,
+      y: pos.y + (Math.random() - 0.5) * 20,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: i % 3 === 0 ? '#ff2222' : (i % 3 === 1 ? '#442222' : '#221111'),
+      size: 2 + Math.random() * 2,
+    });
+  }
 }
 
 function triggerShake() {
@@ -680,8 +734,13 @@ function renderBoard(boardId, state) {
       }
 
       // Blocked
-      if (cell.blocked) {
+      if (cell.deadZone) {
+        div.classList.add('dead-zone');
+      } else if (cell.blocked) {
         div.classList.add('blocked');
+      }
+      if (cell.warningZone) {
+        div.classList.add('warning-zone');
       }
 
       // Cell modifier overlay
@@ -868,6 +927,7 @@ function renderBattleLog(state) {
     if (entry.includes('captures')) div.classList.add('capture');
     if (entry.includes('VICTORY')) div.classList.add('victory');
     if (entry.includes('DEFEAT')) div.classList.add('defeat');
+    if (entry.includes('SUDDEN DEATH') || entry.includes('Ring collapse') || entry.includes('crushed in the squeeze')) div.classList.add('sudden-death-log');
     div.textContent = entry;
     log.appendChild(div);
   }
@@ -945,18 +1005,7 @@ function renderRoster(state) {
     });
 
     // Tooltip
-    let rosterTt = '<div class="tt-title">' + esc(r.type) + '</div>';
-    if (r.hp != null && r.maxHp != null) {
-      rosterTt += '<div class="tt-desc">HP: ' + r.hp + '/' + r.maxHp + ' | ATK: ' + (r.attack || 0) + '</div>';
-    }
-    if (r.modifiers && r.modifiers.length > 0) {
-      for (const m of r.modifiers) {
-        rosterTt += '<div class="tt-mod">' + esc(m.name);
-        if (m.description) rosterTt += ': ' + esc(m.description);
-        rosterTt += '</div>';
-      }
-    }
-    attachTooltip(div, rosterTt);
+    attachTooltip(div, buildPieceTooltip(r));
 
     container.appendChild(div);
   }
@@ -1489,17 +1538,28 @@ function hideTooltip() {
   document.getElementById('tooltip').classList.remove('visible');
 }
 
+function pieceDisplayName(rawType) {
+  if (!rawType) return '';
+  return rawType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function buildPieceTooltip(piece) {
-  let html = '<div class="tt-title">' + esc(piece.type) + '</div>';
-  html += '<div class="tt-team ' + piece.team + '">' + esc(piece.team) + '</div>';
+  let html = '<div class="tt-title">' + esc(pieceDisplayName(piece.type)) + '</div>';
+  if (piece.moveDesc) {
+    html += '<div class="tt-move">' + esc(piece.moveDesc) + '</div>';
+  }
+  if (piece.ability) {
+    html += '<div class="tt-ability">' + esc(piece.ability) + '</div>';
+  }
   if (piece.hp != null && piece.maxHp != null) {
-    html += '<div class="tt-desc">HP: ' + piece.hp + '/' + piece.maxHp + ' | ATK: ' + (piece.attack || 0) + '</div>';
+    html += '<div class="tt-sep"></div>';
+    html += '<div class="tt-stats">HP ' + piece.hp + '/' + piece.maxHp + '  ·  ATK ' + (piece.attack || 0) + '</div>';
   }
   if (piece.modifiers && piece.modifiers.length > 0) {
+    html += '<div class="tt-sep"></div>';
     for (const m of piece.modifiers) {
-      html += '<div class="tt-mod">' + esc(m.name);
-      if (m.description) html += ': ' + esc(m.description);
-      html += '</div>';
+      html += '<div class="tt-mod">\u2694 ' + esc(m.name) + '</div>';
+      if (m.description) html += '<div class="tt-desc">  ' + esc(m.description) + '</div>';
     }
   }
   return html;
@@ -1511,12 +1571,12 @@ function buildCellTooltip(cell) {
     html += buildPieceTooltip(cell.piece);
   }
   if (cell.cellMod) {
-    if (html) html += '<hr style="border-color:rgba(180,142,255,0.2);margin:6px 0">';
+    if (html) html += '<div class="tt-sep"></div>';
     html += '<div class="tt-title">' + esc(cell.cellMod.name) + '</div>';
     if (cell.cellMod.description) html += '<div class="tt-desc">' + esc(cell.cellMod.description) + '</div>';
   }
   if (cell.borderMod) {
-    if (html) html += '<hr style="border-color:rgba(180,142,255,0.2);margin:6px 0">';
+    if (html) html += '<div class="tt-sep"></div>';
     html += '<div class="tt-title">' + esc(cell.borderMod.name) + '</div>';
     if (cell.borderMod.description) html += '<div class="tt-desc">' + esc(cell.borderMod.description) + '</div>';
   }

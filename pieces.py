@@ -137,6 +137,82 @@ PIECE_STATS: dict[PieceType, tuple[int, int]] = {
     PieceType.PHOENIX: (6, 4), PieceType.KING_RAT: (4, 2),
 }
 
+# Player-facing descriptions for tooltips
+PIECE_INFO: dict[PieceType, dict[str, str | None]] = {
+    PieceType.PAWN: {
+        "move": "Moves forward, captures diagonally",
+        "ability": "Double move on first turn",
+    },
+    PieceType.KNIGHT: {
+        "move": "Leaps in an L-shape",
+        "ability": "Jumps over other pieces",
+    },
+    PieceType.BISHOP: {
+        "move": "Slides diagonally",
+        "ability": None,
+    },
+    PieceType.ROOK: {
+        "move": "Slides in straight lines",
+        "ability": None,
+    },
+    PieceType.QUEEN: {
+        "move": "Slides in any direction",
+        "ability": None,
+    },
+    PieceType.KING: {
+        "move": "Moves one square any direction",
+        "ability": None,
+    },
+    PieceType.BOMB: {
+        "move": "Cannot move",
+        "ability": "Explodes on death, damaging nearby pieces",
+    },
+    PieceType.MIMIC: {
+        "move": "Moves one square any direction",
+        "ability": "Transforms when damaged",
+    },
+    PieceType.LEECH: {
+        "move": "Moves one square any direction",
+        "ability": "Steals from enemies",
+    },
+    PieceType.SUMMONER: {
+        "move": "Moves one square (empty cells only)",
+        "ability": "Spawns pawns on empty cells",
+    },
+    PieceType.GHOST: {
+        "move": "Slides in any direction",
+        "ability": "Passes through all pieces",
+    },
+    PieceType.GAMBLER: {
+        "move": "Teleports anywhere on the board",
+        "ability": "High risk, high reward",
+    },
+    PieceType.ANCHOR_PIECE: {
+        "move": "Cannot move",
+        "ability": "Immovable wall",
+    },
+    PieceType.PARASITE: {
+        "move": "Moves one square any direction",
+        "ability": "Infests enemies",
+    },
+    PieceType.MIRROR_PIECE: {
+        "move": "Moves one square any direction",
+        "ability": "Reflects enemy effects",
+    },
+    PieceType.VOID: {
+        "move": "Slides in any direction",
+        "ability": "Warps the battlefield",
+    },
+    PieceType.PHOENIX: {
+        "move": "Slides diagonally",
+        "ability": "Revives after death",
+    },
+    PieceType.KING_RAT: {
+        "move": "Range grows with more rats",
+        "ability": "Swarm — more rats, more power",
+    },
+}
+
 
 @dataclass
 class Modifier:
@@ -326,19 +402,19 @@ class Piece:
             direction = -1 if self.team == Team.PLAYER else 1
             # Forward (must be empty)
             ny = y + direction
-            if 0 <= ny < board.height:
+            if board.in_bounds(x, ny):
                 if board.is_empty(x, ny):
                     valid.append((x, ny))
                     # Double move
                     if not self.has_moved:
                         ny2 = y + 2 * direction
-                        if 0 <= ny2 < board.height and board.is_empty(x, ny2):
+                        if board.in_bounds(x, ny2) and board.is_empty(x, ny2):
                             valid.append((x, ny2))
             # Diagonal captures (must have enemy)
             for dx in [-1, 1]:
                 nx = x + dx
                 ny = y + direction
-                if 0 <= nx < board.width and 0 <= ny < board.height:
+                if board.in_bounds(nx, ny):
                     target = board.get_piece_at(nx, ny)
                     if target and target.team != self.team:
                         valid.append((nx, ny))
@@ -346,7 +422,7 @@ class Piece:
         elif self.piece_type == PieceType.KNIGHT:
             for dx, dy in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < board.width and 0 <= ny < board.height:
+                if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
                     target = board.get_piece_at(nx, ny)
                     if not target or target.team != self.team:
                         valid.append((nx, ny))
@@ -363,7 +439,7 @@ class Piece:
                 skipped = False
                 for dist in range(1, max(board.width, board.height)):
                     nx, ny = x + dx * dist, y + dy * dist
-                    if not (0 <= nx < board.width and 0 <= ny < board.height):
+                    if not board.in_bounds(nx, ny):
                         break
                     if board.is_blocked(nx, ny):
                         break
@@ -393,11 +469,10 @@ class Piece:
                     if dx == 0 and dy == 0:
                         continue
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < board.width and 0 <= ny < board.height:
-                        if not board.is_blocked(nx, ny):
-                            target = board.get_piece_at(nx, ny)
-                            if not target or target.team != self.team:
-                                valid.append((nx, ny))
+                    if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                        target = board.get_piece_at(nx, ny)
+                        if not target or target.team != self.team:
+                            valid.append((nx, ny))
 
         # --- New abstract pieces ---
         elif self.piece_type in (PieceType.BOMB, PieceType.ANCHOR_PIECE, PieceType.PARASITE):
@@ -410,11 +485,10 @@ class Piece:
                     if dx == 0 and dy == 0:
                         continue
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < board.width and 0 <= ny < board.height:
-                        if not board.is_blocked(nx, ny):
-                            target = board.get_piece_at(nx, ny)
-                            if not target or target.team != self.team:
-                                valid.append((nx, ny))
+                    if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                        target = board.get_piece_at(nx, ny)
+                        if not target or target.team != self.team:
+                            valid.append((nx, ny))
 
         elif self.piece_type == PieceType.SUMMONER:
             # King-style but only empty cells (cannot attack)
@@ -423,16 +497,15 @@ class Piece:
                     if dx == 0 and dy == 0:
                         continue
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < board.width and 0 <= ny < board.height:
-                        if board.is_empty(nx, ny):
-                            valid.append((nx, ny))
+                    if board.in_bounds(nx, ny) and board.is_empty(nx, ny):
+                        valid.append((nx, ny))
 
         elif self.piece_type == PieceType.GHOST:
             # Queen-style but passes through ALL pieces
             for dx, dy in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
                 for dist in range(1, max(board.width, board.height)):
                     nx, ny = x + dx * dist, y + dy * dist
-                    if not (0 <= nx < board.width and 0 <= ny < board.height):
+                    if not board.in_bounds(nx, ny):
                         break
                     if board.is_blocked(nx, ny):
                         break
@@ -450,7 +523,7 @@ class Piece:
                 for gy in range(board.height):
                     if gx == x and gy == y:
                         continue
-                    if board.is_blocked(gx, gy):
+                    if not board.in_bounds(gx, gy) or board.is_blocked(gx, gy):
                         continue
                     target = board.get_piece_at(gx, gy)
                     if not target or target.team != self.team:
@@ -463,7 +536,7 @@ class Piece:
                 skipped = False
                 for dist in range(1, max(board.width, board.height)):
                     nx, ny = x + dx * dist, y + dy * dist
-                    if not (0 <= nx < board.width and 0 <= ny < board.height):
+                    if not board.in_bounds(nx, ny):
                         break
                     if board.is_blocked(nx, ny):
                         break
@@ -489,7 +562,7 @@ class Piece:
                 skipped = False
                 for dist in range(1, max(board.width, board.height)):
                     nx, ny = x + dx * dist, y + dy * dist
-                    if not (0 <= nx < board.width and 0 <= ny < board.height):
+                    if not board.in_bounds(nx, ny):
                         break
                     if board.is_blocked(nx, ny):
                         break
@@ -522,11 +595,10 @@ class Piece:
                     if abs(dx) > move_range or abs(dy) > move_range:
                         continue
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < board.width and 0 <= ny < board.height:
-                        if not board.is_blocked(nx, ny):
-                            target = board.get_piece_at(nx, ny)
-                            if not target or target.team != self.team:
-                                valid.append((nx, ny))
+                    if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                        target = board.get_piece_at(nx, ny)
+                        if not target or target.team != self.team:
+                            valid.append((nx, ny))
 
         # Swift modifier: king-style moves in addition to normal moves
         has_extra_move = any(m.effect == "swift" for m in self.modifiers)
@@ -539,12 +611,11 @@ class Piece:
                     if dx == 0 and dy == 0:
                         continue
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < board.width and 0 <= ny < board.height:
-                        if not board.is_blocked(nx, ny):
-                            target = board.get_piece_at(nx, ny)
-                            if not target or target.team != self.team:
-                                if (nx, ny) not in valid:
-                                    valid.append((nx, ny))
+                    if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                        target = board.get_piece_at(nx, ny)
+                        if not target or target.team != self.team:
+                            if (nx, ny) not in valid:
+                                valid.append((nx, ny))
 
         # Phase cell modifier for non-sliding pieces (knight): allow moving
         # through friendly-occupied squares (knight already jumps, so no change)

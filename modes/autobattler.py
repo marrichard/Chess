@@ -9,7 +9,7 @@ import numpy as np
 import tcod.console
 
 from board import Board
-from pieces import Piece, PieceType, Team, PIECE_VALUES, PIECE_STATS, MODIFIERS
+from pieces import Piece, PieceType, Team, PIECE_VALUES, PIECE_STATS, MODIFIERS, PIECE_INFO
 from engine import Action, GameState
 from modifiers import (
     CellModifier, BorderModifier, CELL_MODIFIERS, BORDER_MODIFIERS,
@@ -59,6 +59,11 @@ BOSS_TABLE = {
 }
 
 DIFFICULTY_MULT = {"basic": 1.0, "extreme": 1.5, "grandmaster": 2.5}
+
+# Sudden Death configuration
+SUDDEN_DEATH_ANNOUNCE = 25   # turn to announce
+SUDDEN_DEATH_SCHEDULE = {30: 0, 37: 1, 43: 2, 50: 3}  # turn -> ring to close
+SAFETY_CAP = 60
 
 
 def _layout(console: tcod.console.Console) -> dict:
@@ -142,7 +147,7 @@ def evaluate_board(board: Board, team: Team) -> float:
         for mx, my in p.get_capture_moves(board):
             target = board.get_piece_at(mx, my)
             if target and target.hp <= p.attack:
-                score += target.value * 3  # bonus for killable targets
+                score += target.value * 5  # bonus for killable targets
         # New piece bonuses
         if p.piece_type == PieceType.SUMMONER:
             adj_empty = sum(1 for dx in [-1,0,1] for dy in [-1,0,1]
@@ -190,15 +195,15 @@ def evaluate_board(board: Board, team: Team) -> float:
         # Advance toward nearest enemy
         if enemies:
             nearest_dist = min(abs(p.x - e.x) + abs(p.y - e.y) for e in enemies)
-            score += max(0, 8 - nearest_dist) * 0.15
+            score += max(0, 8 - nearest_dist) * 0.3
 
-        # Safety: penalty for being on an attacked square
+        # Safety: light penalty for being on an attacked square
+        # (keep it mild — this is an autobattler, pieces should engage)
         if board.is_square_attacked_by(p.x, p.y, enemy_team):
-            # Worse if undefended
             if board.is_square_attacked_by(p.x, p.y, ally_team):
-                score -= p.value * 0.5
+                score -= p.value * 0.2
             else:
-                score -= p.value * 2
+                score -= p.value * 0.8
 
     # 3. Enemy pieces: penalize their threats and mobility (symmetric)
     for p in enemies:
@@ -325,6 +330,12 @@ def minimax_choose_move(
 
         scores.append(worst_for_us)
 
+    # Aggression bonus: prefer capture moves over passive positioning
+    for i, (piece, mx, my) in enumerate(moves):
+        target = board.get_piece_at(mx, my)
+        if target and target.team != piece.team:
+            scores[i] += 2.0
+
     # Apply streak penalty to discourage one piece hogging all turns
     if piece_streaks:
         for i, (piece, mx, my) in enumerate(moves):
@@ -364,6 +375,8 @@ class AutoBattler:
         self.battle_turn = 0
         self.battle_log: list[str] = []
         self.battle_player_turn = True
+        self.sudden_death_active: bool = False
+        self.sudden_death_ring: int = 0  # next ring to close
 
         self.draft_options: list[dict] = []
         self.draft_selection = 0
@@ -692,6 +705,9 @@ class AutoBattler:
         self._start_wave()
         # Restore the exact phase from the save (start_wave may set a different one)
         self.phase = saved_phase
+        # If restored into shop phase, regenerate shop items (not serialized)
+        if saved_phase == "shop":
+            self._generate_shop()
 
     def _auto_save(self) -> None:
         """Save current run state to disk at checkpoint phases."""
@@ -704,6 +720,11 @@ class AutoBattler:
 
     def to_render_state(self) -> dict:
         """Serialize everything JS needs to render the current phase."""
+        # Compute warning zone for sudden death
+        warning_cells: set[tuple[int, int]] = set()
+        if self.sudden_death_active and self.phase == "battle":
+            warning_cells = self.board.get_warning_cells(self.sudden_death_ring)
+
         # Build 8x8 board grid
         board_grid = []
         for row_y in range(self.board.height):
@@ -716,6 +737,7 @@ class AutoBattler:
                     cm = None
                     if piece.cell_modifier:
                         cm = piece.cell_modifier.effect
+                    info = PIECE_INFO.get(piece.piece_type, {})
                     piece_data = {
                         "type": piece.piece_type.value,
                         "team": piece.team.value,
@@ -724,6 +746,8 @@ class AutoBattler:
                         "hp": piece.hp,
                         "maxHp": piece.max_hp,
                         "attack": piece.attack,
+                        "moveDesc": info.get("move", ""),
+                        "ability": info.get("ability", ""),
                     }
 
                 cell_mod = None
@@ -757,6 +781,8 @@ class AutoBattler:
                     "cellMod": cell_mod,
                     "borderMod": border_mod,
                     "blocked": self.board.is_blocked(col_x, row_y),
+                    "deadZone": (col_x, row_y) in self.board.dead_zone,
+                    "warningZone": (col_x, row_y) in warning_cells,
                 })
             board_grid.append(row)
 
@@ -780,6 +806,7 @@ class AutoBattler:
         roster_data = []
         for p in self.roster:
             mods = [{"name": m.name, "effect": m.effect, "description": m.description} for m in p.modifiers]
+            info = PIECE_INFO.get(p.piece_type, {})
             roster_data.append({
                 "type": p.piece_type.value,
                 "team": p.team.value,
@@ -789,6 +816,8 @@ class AutoBattler:
                 "hp": p.hp,
                 "maxHp": p.max_hp,
                 "attack": p.attack,
+                "moveDesc": info.get("move", ""),
+                "ability": info.get("ability", ""),
             })
 
         # Selected piece info
@@ -816,6 +845,8 @@ class AutoBattler:
             "message": self.message,
             "battleLog": self.battle_log[-14:],
             "battleTurn": self.battle_turn,
+            "suddenDeath": self.sudden_death_active,
+            "suddenDeathRing": self.sudden_death_ring,
             "manualMode": self.manual_mode,
             "playerTurn": self.battle_player_turn,
             "tournament": self.tournament,
@@ -908,6 +939,8 @@ class AutoBattler:
         self.battle_log = []
         self.battle_turn = 0
         self.battle_player_turn = True
+        self.sudden_death_active = False
+        self.sudden_death_ring = 0
         self.roster_selection = 0
         self.cursor = (3, 5)
         self.message = "Place pieces on your half, then SPACE to fight."
@@ -1613,9 +1646,8 @@ class AutoBattler:
 
         if self.board.count_alive(Team.PLAYER) == 0 or self.board.count_alive(Team.ENEMY) == 0:
             self._end_battle()
-        elif self.battle_turn > 20:
-            self.battle_log.append("Stalemate!")
-            self._end_battle()
+        elif self.phase == "battle":
+            self._check_sudden_death()
 
     def _filter_oscillation(self, moves: list[tuple[Piece, int, int]]) -> list[tuple[Piece, int, int]]:
         """Remove moves that return a piece to its previous position."""
@@ -1635,6 +1667,60 @@ class AutoBattler:
             self._piece_noncapture_streak[id(piece)] = 0
         else:
             self._piece_noncapture_streak[id(piece)] = self._piece_noncapture_streak.get(id(piece), 0) + 1
+
+    def _check_sudden_death(self) -> None:
+        """Check and process sudden death events for the current turn."""
+        turn = self.battle_turn
+
+        # Announcement
+        if turn == SUDDEN_DEATH_ANNOUNCE and not self.sudden_death_active:
+            self.sudden_death_active = True
+            self.battle_log.append("--- SUDDEN DEATH! The board will shrink! ---")
+            self.message = "SUDDEN DEATH!"
+
+        # Ring closures
+        if turn in SUDDEN_DEATH_SCHEDULE:
+            ring = SUDDEN_DEATH_SCHEDULE[turn]
+            killed, pushed = self.board.close_ring(ring)
+            self.sudden_death_ring = ring + 1
+
+            ring_names = {0: "outer edge", 1: "second ring", 2: "third ring", 3: "center"}
+            self.battle_log.append(f"Ring collapse! The {ring_names.get(ring, 'ring')} crumbles!")
+
+            if pushed:
+                self.battle_log.append(f"  {len(pushed)} piece(s) pushed inward")
+
+            for p in killed:
+                team_name = "Player" if p.team == Team.PLAYER else "Enemy"
+                self.battle_log.append(f"  {team_name} {p.piece_type.value} crushed in the squeeze!")
+                death_msgs = self.board.process_on_death(p, None, self.rng, self.active_synergies)
+                self.battle_log.extend(death_msgs)
+
+            # Clean up dead pieces
+            self.board.pieces = [p for p in self.board.pieces if p.alive]
+
+            # Check if battle ends from collapse
+            player_alive = self.board.count_alive(Team.PLAYER)
+            enemy_alive = self.board.count_alive(Team.ENEMY)
+            if player_alive == 0 or enemy_alive == 0:
+                self._end_battle()
+                return
+
+            # If entire board is dead zone, force kill remaining pieces
+            max_ring = min(self.board.width, self.board.height) // 2
+            if self.sudden_death_ring >= max_ring:
+                # No playable cells left — kill everyone
+                for p in self.board.pieces:
+                    p.alive = False
+                self.board.pieces.clear()
+                self.battle_log.append("The arena is completely destroyed!")
+                self._end_battle()
+                return
+
+        # Safety cap
+        if turn >= SAFETY_CAP and self.phase == "battle":
+            self.battle_log.append("The arena collapses completely!")
+            self._end_battle()
 
     def _battle_step(self) -> None:
         team = Team.PLAYER if self.battle_player_turn else Team.ENEMY
@@ -1719,9 +1805,8 @@ class AutoBattler:
 
         if self.board.count_alive(Team.PLAYER) == 0 or self.board.count_alive(Team.ENEMY) == 0:
             self._end_battle()
-        elif self.battle_turn > 20:
-            self.battle_log.append("Stalemate!")
-            self._end_battle()
+        elif self.phase == "battle":
+            self._check_sudden_death()
 
     def _end_battle(self) -> None:
         player_alive = self.board.count_alive(Team.PLAYER)
