@@ -29,6 +29,9 @@ class GameBridge:
         run_state = sd.load_run()
         has_continue = run_state is not None
         continue_wave = run_state.get("wave", "?") if run_state else 0
+        from achievements import ACHIEVEMENTS
+        total_achievements = len(ACHIEVEMENTS)
+        unlocked_count = len(self._save_data.unlocked_achievements)
         return {
             "elo": self._save_data.elo,
             "grandmaster_unlocked": self._save_data.grandmaster_unlocked,
@@ -36,6 +39,8 @@ class GameBridge:
             "continue_wave": continue_wave,
             "stats": self._save_data.stats,
             "settings": self._save_data.settings,
+            "achievement_count": unlocked_count,
+            "achievement_total": total_achievements,
         }
 
     def get_settings(self) -> dict:
@@ -50,41 +55,56 @@ class GameBridge:
 
     def get_codex_data(self) -> dict:
         """Collect all static definitions plus discovery state for codex."""
-        from pieces import PIECE_STATS, PieceType
+        from pieces import PIECE_STATS, PieceType, PIECE_INFO
         from modifiers import CELL_MODIFIERS, BORDER_MODIFIERS, TAROT_CARDS, ARTIFACTS
         from synergies import SYNERGIES
+        from masters import MASTERS
+        from rarity import (
+            PIECE_RARITY, PIECE_MOD_RARITY, TAROT_RARITY, ARTIFACT_RARITY,
+            CELL_MOD_RARITY, BORDER_MOD_RARITY, RARITY_PROPS, Rarity,
+        )
 
         pieces = []
         for pt, (hp, atk) in PIECE_STATS.items():
+            r = PIECE_RARITY.get(pt.value, Rarity.COMMON)
             pieces.append({
                 "key": pt.value,
                 "name": pt.value.replace("_", " ").title(),
                 "hp": hp,
                 "attack": atk,
                 "unlocked": pt.value in self._save_data.unlocked_pieces,
+                "rarity": r.value,
+                "rarityColor": list(RARITY_PROPS[r]["color"]),
             })
 
         cell_mods = []
         for key, m in CELL_MODIFIERS.items():
+            r = CELL_MOD_RARITY.get(key, Rarity.COMMON)
             cell_mods.append({
                 "key": key,
                 "name": m["name"],
                 "icon": m.get("icon", "?"),
                 "color": list(m["color"]),
                 "description": m["description"],
+                "rarity": r.value,
+                "rarityColor": list(RARITY_PROPS[r]["color"]),
             })
 
         border_mods = []
         for key, m in BORDER_MODIFIERS.items():
+            r = BORDER_MOD_RARITY.get(key, Rarity.COMMON)
             border_mods.append({
                 "key": key,
                 "name": m["name"],
                 "color": list(m["border_color"]),
                 "description": m["description"],
+                "rarity": r.value,
+                "rarityColor": list(RARITY_PROPS[r]["color"]),
             })
 
         tarots = []
         for key, t in TAROT_CARDS.items():
+            r = TAROT_RARITY.get(key, Rarity.COMMON)
             tarots.append({
                 "key": key,
                 "name": t["name"],
@@ -92,17 +112,21 @@ class GameBridge:
                 "color": list(t["color"]),
                 "cost": t["cost"],
                 "description": t["description"],
+                "rarity": r.value,
+                "rarityColor": list(RARITY_PROPS[r]["color"]),
             })
 
         artifacts = []
         for key, a in ARTIFACTS.items():
+            r = ARTIFACT_RARITY.get(key, Rarity.COMMON)
             artifacts.append({
                 "key": key,
                 "name": a["name"],
                 "icon": a.get("icon", "\u2726"),
                 "color": list(a["color"]),
                 "cost": a["cost"],
-                "rarity": a.get("rarity", "common"),
+                "rarity": r.value,
+                "rarityColor": list(RARITY_PROPS[r]["color"]),
                 "description": a["description"],
             })
 
@@ -118,6 +142,19 @@ class GameBridge:
                 "discovered": s.effect_key in discovered,
             })
 
+        masters_list = []
+        for key, m in MASTERS.items():
+            masters_list.append({
+                "key": m.key,
+                "name": m.name,
+                "description": m.description,
+                "passive": m.passive_desc,
+                "drawback": m.drawback_desc,
+                "icon": m.icon,
+                "color": list(m.color),
+                "unlocked": key in self._save_data.unlocked_masters,
+            })
+
         return {
             "pieces": pieces,
             "cell_modifiers": cell_mods,
@@ -125,12 +162,146 @@ class GameBridge:
             "tarots": tarots,
             "artifacts": artifacts,
             "synergies": synergies,
+            "masters": masters_list,
         }
+
+    def mark_codex_viewed(self, tab: str) -> None:
+        """Called from chessticon.js when user views a codex tab. Increments unique entries viewed."""
+        from pieces import PIECE_STATS
+        from modifiers import CELL_MODIFIERS, BORDER_MODIFIERS, TAROT_CARDS, ARTIFACTS
+        from synergies import SYNERGIES
+        from masters import MASTERS
+
+        # Count items for this tab
+        tab_counts = {
+            "pieces": len(PIECE_STATS),
+            "modifiers": len(CELL_MODIFIERS) + len(BORDER_MODIFIERS),
+            "tarots": len(TAROT_CARDS),
+            "artifacts": len(ARTIFACTS),
+            "synergies": len(SYNERGIES),
+            "masters": len(MASTERS),
+        }
+        count = tab_counts.get(tab, 0)
+        if count <= 0:
+            return
+
+        self._save_data = sd.load()
+        viewed_tabs = set(self._save_data.stats.get("codex_tabs_viewed", []))
+        if tab not in viewed_tabs:
+            viewed_tabs.add(tab)
+            self._save_data.stats["codex_tabs_viewed"] = list(viewed_tabs)
+            # Count total unique entries viewed based on tabs visited
+            total_viewed = sum(tab_counts.get(t, 0) for t in viewed_tabs)
+            self._save_data.stats["codex_entries_viewed"] = total_viewed
+            sd.save(self._save_data)
+
+    def get_achievements(self) -> dict:
+        """Return all achievement data for the gallery UI."""
+        from achievements import ACHIEVEMENTS, ACHIEVEMENT_CATEGORIES
+        self._save_data = sd.load()
+        unlocked = set(self._save_data.unlocked_achievements)
+
+        achievements = []
+        for ach in ACHIEVEMENTS:
+            earned = ach.key in unlocked
+            achievements.append({
+                "key": ach.key,
+                "name": ach.name if (earned or not ach.hidden) else "???",
+                "description": ach.description if (earned or not ach.hidden) else "Hidden achievement",
+                "icon": ach.icon if (earned or not ach.hidden) else "?",
+                "category": ach.category,
+                "hidden": ach.hidden,
+                "earned": earned,
+                "unlocks": ach.unlocks if (earned or not ach.hidden) else [],
+            })
+
+        return {
+            "achievements": achievements,
+            "categories": ACHIEVEMENT_CATEGORIES,
+            "unlocked_count": len(unlocked),
+            "total_count": len(ACHIEVEMENTS),
+        }
+
+    def get_achievement_progress(self) -> list[dict]:
+        """Return progress data for stat-based achievements."""
+        from achievements import ACHIEVEMENTS
+        self._save_data = sd.load()
+        stats = self._save_data.stats
+        unlocked = set(self._save_data.unlocked_achievements)
+
+        progress = []
+        for ach in ACHIEVEMENTS:
+            if ach.condition_type != "stat":
+                continue
+            earned = ach.key in unlocked
+            stat_key = ach.condition.get("stat", "")
+            threshold = ach.condition.get("threshold", 0)
+
+            # Dynamic thresholds
+            if stat_key == "synergies_discovered":
+                from synergies import SYNERGIES
+                if ach.key == "encyclopedia":
+                    threshold = len(SYNERGIES)
+                actual = len(self._save_data.discovered_synergies)
+            elif stat_key == "different_masters_won_with":
+                from masters import MASTERS
+                if ach.key == "completionist":
+                    threshold = len(MASTERS)
+                actual = len(stats.get("masters_won_with", []))
+            elif stat_key == "codex_entries_viewed":
+                from pieces import PIECE_STATS
+                from modifiers import CELL_MODIFIERS, BORDER_MODIFIERS, TAROT_CARDS, ARTIFACTS
+                total = len(PIECE_STATS) + len(CELL_MODIFIERS) + len(BORDER_MODIFIERS) + len(TAROT_CARDS) + len(ARTIFACTS) + len(SYNERGIES) + len(MASTERS)
+                threshold = total
+                actual = stats.get("codex_entries_viewed", 0)
+            elif stat_key == "boss_types_beaten_count":
+                actual = len(stats.get("boss_types_beaten", []))
+            else:
+                actual = stats.get(stat_key, 0)
+
+            progress.append({
+                "key": ach.key,
+                "name": ach.name if (earned or not ach.hidden) else "???",
+                "current": min(actual, threshold),
+                "target": threshold,
+                "earned": earned,
+            })
+
+        return progress
 
     def quit_game(self) -> None:
         """Destroy the window (exits the app)."""
         if self._window:
             self._window.destroy()
+
+    # ------------------------------------------------------------------ Master API
+
+    def get_masters(self) -> list[dict]:
+        """Return list of master data for selection UI."""
+        from masters import MASTERS
+        result = []
+        for key, m in MASTERS.items():
+            result.append({
+                "key": m.key,
+                "name": m.name,
+                "description": m.description,
+                "passive": m.passive_desc,
+                "drawback": m.drawback_desc,
+                "icon": m.icon,
+                "color": list(m.color),
+                "unlocked": key in self._save_data.unlocked_masters,
+                "selected": key == self._save_data.selected_master,
+            })
+        return result
+
+    def select_master(self, key: str) -> dict:
+        """Store master selection in save data."""
+        from masters import MASTERS
+        if key in MASTERS and key in self._save_data.unlocked_masters:
+            self._save_data.selected_master = key
+            sd.save(self._save_data)
+            return {"success": True, "selected": key}
+        return {"success": False}
 
     # ------------------------------------------------------------------ Navigation
 
@@ -140,17 +311,20 @@ class GameBridge:
         self._last_difficulty = difficulty
         self._save_data = sd.load()
 
+        master_key = self._save_data.selected_master
+
         if action == "tournament":
             sd.clear_run()
             from modes.autobattler import AutoBattler
             self._mode = AutoBattler(
                 tournament=True, difficulty=difficulty, save_data=self._save_data,
+                master_key=master_key,
             )
             self._mode.on_enter()
         elif action == "free_play":
             sd.clear_run()
             from modes.autobattler import AutoBattler
-            self._mode = AutoBattler(save_data=self._save_data)
+            self._mode = AutoBattler(save_data=self._save_data, master_key=master_key)
             self._mode.on_enter()
         elif action == "continue":
             state = sd.load_run()
@@ -278,12 +452,14 @@ class GameBridge:
         """Restart a game without returning to the menu."""
         self._save_data = sd.load()
         sd.clear_run()
+        master_key = self._save_data.selected_master
         if tournament:
             from modes.autobattler import AutoBattler
             self._mode = AutoBattler(
                 tournament=True, difficulty=difficulty, save_data=self._save_data,
+                master_key=master_key,
             )
         else:
             from modes.autobattler import AutoBattler
-            self._mode = AutoBattler(save_data=self._save_data)
+            self._mode = AutoBattler(save_data=self._save_data, master_key=master_key)
         self._mode.on_enter()

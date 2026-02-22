@@ -21,6 +21,22 @@ class Board:
     cell_modifiers: dict[tuple[int, int], CellModifier] = field(default_factory=dict)
     border_modifiers: dict[tuple[int, int], BorderModifier] = field(default_factory=dict)
     dead_zone: set[tuple[int, int]] = field(default_factory=set)
+    _grid: dict[tuple[int, int], Piece] = field(default_factory=dict, repr=False)
+    _grid_dirty: bool = field(default=True, repr=False)
+
+    def _ensure_grid(self) -> None:
+        """Rebuild spatial lookup if dirty."""
+        if not self._grid_dirty:
+            return
+        self._grid.clear()
+        for p in self.pieces:
+            if p.alive:
+                self._grid[(p.x, p.y)] = p
+        self._grid_dirty = False
+
+    def invalidate_grid(self) -> None:
+        """Mark grid as needing rebuild. Call after any piece mutation."""
+        self._grid_dirty = True
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height and (x, y) not in self.dead_zone
@@ -28,16 +44,15 @@ class Board:
     def is_empty(self, x: int, y: int) -> bool:
         if (x, y) in self.blocked_tiles:
             return False
-        return self.get_piece_at(x, y) is None
+        self._ensure_grid()
+        return (x, y) not in self._grid
 
     def is_blocked(self, x: int, y: int) -> bool:
         return (x, y) in self.blocked_tiles
 
     def get_piece_at(self, x: int, y: int) -> Piece | None:
-        for p in self.pieces:
-            if p.alive and p.x == x and p.y == y:
-                return p
-        return None
+        self._ensure_grid()
+        return self._grid.get((x, y))
 
     def get_team_pieces(self, team: Team) -> list[Piece]:
         return [p for p in self.pieces if p.alive and p.team == team]
@@ -55,6 +70,7 @@ class Board:
         piece.alive = True
         if piece not in self.pieces:
             self.pieces.append(piece)
+        self._grid_dirty = True
         return True
 
     def move_piece(self, piece: Piece, nx: int, ny: int, rng: random.Random | None = None,
@@ -71,6 +87,8 @@ class Board:
         old_x, old_y = piece.x, piece.y
         captured = None
         target = self.get_piece_at(nx, ny)
+        # Invalidate grid upfront — positions/alive will change during combat
+        self._grid_dirty = True
 
         if target and target.team != piece.team:
             # Fortified border modifier: piece on this cell cannot be captured
@@ -82,6 +100,20 @@ class Board:
             # --- Calculate damage ---
             damage = piece.attack
 
+            # Assassin: triple damage to full-HP targets
+            if piece.piece_type == PieceType.ASSASSIN and target.hp == target.max_hp:
+                damage *= 3
+
+            # Lancer: +1 damage per square moved
+            if piece.piece_type == PieceType.LANCER:
+                dist = abs(nx - old_x) + abs(ny - old_y)
+                damage += dist
+
+            # Charger: +2 ATK per square moved
+            if piece.piece_type == PieceType.CHARGER:
+                dist = max(abs(nx - old_x), abs(ny - old_y))
+                damage += dist * 2
+
             # Gambler: 50% chance damage = 0 (unless glass_cannon synergy)
             if piece.piece_type == PieceType.GAMBLER:
                 if "glass_cannon" in _synergies:
@@ -89,12 +121,28 @@ class Board:
                 elif _rng.random() < 0.5:
                     damage = 0
 
+            # Lucky modifier on target: 20% dodge chance
+            if any(m.effect == "lucky" for m in target.modifiers):
+                if _rng.random() < 0.2:
+                    damage = 0
+
             # Anchor piece aura: reduce damage if target is near an anchor
             damage = max(0, damage - self.get_anchor_damage_reduction(target.x, target.y, target.team))
 
             # Armored modifier: -2 incoming damage (persistent, not consumed)
             if any(m.effect == "armored" for m in target.modifiers):
-                damage = max(0, damage - 2)
+                armor_reduction = 2
+                # Chain Mail artifact: armored reduces by 3 (checked via ability_flags)
+                if target.ability_flags.get("chain_mail"):
+                    armor_reduction = 3
+                # Fortress Protocol synergy: reduces by 4
+                if "fortress_protocol" in _synergies and target.team == Team.PLAYER:
+                    armor_reduction = 4
+                damage = max(0, damage - armor_reduction)
+
+            # Wall: takes -3 from all sources
+            if target.piece_type == PieceType.WALL:
+                damage = max(0, damage - 3)
 
             # Shield cell modifier: -3 incoming damage (consumed)
             has_shield = (target.cell_modifier and target.cell_modifier.effect == "shield")
@@ -102,8 +150,30 @@ class Board:
                 damage = max(0, damage - 3)
                 target.cell_modifier = None  # consume the shield
 
+            # Reaper: execute enemies below 25% HP (or 50% with deaths_harvest)
+            if piece.piece_type == PieceType.REAPER:
+                threshold = 0.5 if "deaths_harvest" in _synergies else 0.25
+                if target.hp <= target.max_hp * threshold:
+                    damage = target.hp  # guaranteed kill
+
+            # Reflective modifier: 30% of damage reflected back to attacker
+            if any(m.effect == "reflective" for m in target.modifiers) and damage > 0:
+                reflected = max(1, int(damage * 0.3))
+                piece.hp -= reflected
+
             # Apply damage
             target.hp -= damage
+
+            # Frozen modifier on attacker: apply chill to target
+            if any(m.effect == "frozen" for m in piece.modifiers) and damage > 0:
+                chill_duration = 1
+                if target.ability_flags.get("frost_shard"):
+                    chill_duration = 2
+                target.status_effects.append({"type": "chill", "duration": chill_duration})
+
+            # Toxic modifier on attacker: apply poison to target
+            if any(m.effect == "toxic" for m in piece.modifiers):
+                target.status_effects.append({"type": "poison", "duration": 3, "magnitude": 1})
 
             # Thorns border modifier: 2 retaliation damage to attacker
             if (target.x, target.y) in self.border_modifiers:
@@ -113,13 +183,35 @@ class Board:
                     if piece.hp <= 0:
                         piece.alive = False
 
+            # Thorned piece modifier: 3 retaliation damage
+            if any(m.effect == "thorned" for m in target.modifiers) and piece.alive:
+                piece.hp -= 3
+                if piece.hp <= 0:
+                    piece.alive = False
+
             # Leech: heal attacker equal to damage dealt
             if piece.piece_type == PieceType.LEECH and damage > 0:
                 piece.hp = min(piece.max_hp, piece.hp + damage)
 
+            # Vampiric modifier: heal 50% of damage dealt on capture
+            if any(m.effect == "vampiric" for m in piece.modifiers) and damage > 0:
+                heal = max(1, damage // 2)
+                piece.hp = min(piece.max_hp, piece.hp + heal)
+
+            # Berserker piece: gains +1 ATK when damaged (target hits back on bounce)
+            if target.hp > 0 and piece.piece_type == PieceType.BERSERKER_PIECE:
+                # Berserker took retaliation conceptually - gain ATK
+                gain = 2 if "war_machine" in _synergies else 1
+                piece.attack += gain
+
+            # Duelist: both deal ATK simultaneously
+            if piece.piece_type == PieceType.DUELIST and target.alive:
+                piece.hp -= target.attack
+                if piece.hp <= 0:
+                    piece.alive = False
+
             # Glass cannon synergy: gambler takes double damage from retaliation
             if piece.piece_type == PieceType.GAMBLER and "glass_cannon" in _synergies:
-                # Target hits back for double its attack if it survives
                 if target.hp > 0 and target.attack > 0:
                     piece.hp -= target.attack * 2
 
@@ -133,6 +225,20 @@ class Board:
                 piece.y = ny
                 piece.has_moved = True
 
+                # Assassin: track captures, die after 2
+                if piece.piece_type == PieceType.ASSASSIN:
+                    kills = piece.ability_flags.get("assassin_kills", 0) + 1
+                    piece.ability_flags["assassin_kills"] = kills
+                    if kills >= 2:
+                        piece.hp = 0
+                        piece.alive = False
+
+                # Berserker piece: ATK resets on kill
+                if piece.piece_type == PieceType.BERSERKER_PIECE:
+                    from pieces import PIECE_STATS
+                    _, base_atk = PIECE_STATS[PieceType.BERSERKER_PIECE]
+                    piece.attack = base_atk
+
                 # Leech on kill: steal one random modifier from victim
                 if piece.piece_type == PieceType.LEECH and target.modifiers:
                     stolen = _rng.choice(target.modifiers)
@@ -142,6 +248,11 @@ class Board:
                 # Target survives — attacker bounces back to origin
                 piece.has_moved = True
                 # Piece stays at old_x, old_y (already there, no position change)
+
+                # Berserker piece: gain ATK from taking conceptual damage
+                if target.piece_type == PieceType.BERSERKER_PIECE and damage > 0:
+                    gain = 2 if "war_machine" in _synergies else 1
+                    target.attack += gain
 
         else:
             # Non-capture move
@@ -157,15 +268,30 @@ class Board:
         if piece.alive:
             self.check_promotion(piece, _rng)
 
+        # Blazing modifier: leave fire trail on origin cell
+        if any(m.effect == "blazing" for m in piece.modifiers) and (piece.x != old_x or piece.y != old_y):
+            # Mark traversed cell as fire trail in cell_modifiers
+            from modifiers import make_cell_modifier, CELL_MODIFIERS
+            if (old_x, old_y) not in self.cell_modifiers and "inferno" in CELL_MODIFIERS:
+                from modifiers import CellModifier
+                fire_trail = CellModifier(
+                    name="Fire Trail", effect="fire_trail",
+                    color=(255, 100, 30), overlay_alpha=0.25,
+                    origin_x=old_x, origin_y=old_y,
+                )
+                self.cell_modifiers[(old_x, old_y)] = fire_trail
+
         # Flaming modifier: 2 flat damage to adjacent enemies on kill
         if any(m.effect == "flaming" for m in piece.modifiers) and captured:
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
+            splash_range = 2 if "pyromancer" in _synergies else 1
+            fire_bonus = 1 if piece.ability_flags.get("ember_stone") else 0
+            for dx in range(-splash_range, splash_range + 1):
+                for dy in range(-splash_range, splash_range + 1):
                     if dx == 0 and dy == 0:
                         continue
                     adj = self.get_piece_at(piece.x + dx, piece.y + dy)
                     if adj and adj.team != piece.team and adj.alive:
-                        adj.hp -= 2
+                        adj.hp -= (2 + fire_bonus)
                         if adj.hp <= 0:
                             adj.alive = False
 
@@ -184,6 +310,25 @@ class Board:
                 victim.hp -= 2
                 if victim.hp <= 0:
                     victim.alive = False
+
+        # Trickster: after attacking, teleport to random empty cell
+        if piece.alive and piece.piece_type == PieceType.TRICKSTER and (captured or target):
+            empty_cells = [
+                (ex, ey) for ex in range(self.width) for ey in range(self.height)
+                if self.is_empty(ex, ey) and (ex, ey) != (piece.x, piece.y)
+            ]
+            if empty_cells:
+                tx, ty = _rng.choice(empty_cells)
+                piece.x = tx
+                piece.y = ty
+
+        # Imp: after moving, swap 2 random enemy positions
+        if piece.alive and piece.piece_type == PieceType.IMP and (piece.x != old_x or piece.y != old_y):
+            enemy_team = Team.ENEMY if piece.team == Team.PLAYER else Team.PLAYER
+            enemies = [p for p in self.get_team_pieces(enemy_team) if p.alive]
+            if len(enemies) >= 2:
+                e1, e2 = _rng.sample(enemies, 2)
+                e1.x, e1.y, e2.x, e2.y = e2.x, e2.y, e1.x, e1.y
 
         # Absorb cell modifier at destination (if piece is alive and no cell mod yet)
         if piece.alive and piece.cell_modifier is None and (piece.x, piece.y) in self.cell_modifiers:
@@ -210,9 +355,75 @@ class Board:
         """Process start-of-turn abilities for a team. Returns log messages."""
         _synergies = active_synergies or []
         messages = []
+        self._grid_dirty = True  # abilities may move/kill pieces
         for p in list(self.get_team_pieces(team)):
             if not p.alive:
                 continue
+
+            # --- Process status effects ---
+            expired = []
+            for i, se in enumerate(p.status_effects):
+                if se["type"] == "chill":
+                    p.ability_flags["chilled"] = True
+                    se["duration"] -= 1
+                    if se["duration"] <= 0:
+                        expired.append(i)
+                elif se["type"] == "poison":
+                    ticks = 2 if p.ability_flags.get("venom_gland") else 1
+                    for _ in range(ticks):
+                        p.hp -= se.get("magnitude", 1)
+                    se["duration"] -= 1
+                    if se["duration"] <= 0:
+                        expired.append(i)
+                    if p.hp <= 0:
+                        p.alive = False
+                        messages.append(f"Poison kills {p.piece_type.value}")
+                elif se["type"] == "curse":
+                    p.hp -= 2
+                    se["duration"] -= 1
+                    if se["duration"] <= 0:
+                        expired.append(i)
+                    if p.hp <= 0:
+                        p.alive = False
+                        messages.append(f"Curse kills {p.piece_type.value}")
+            for i in reversed(expired):
+                p.status_effects.pop(i)
+            # Clear chill flag if no chill effects remain
+            if not any(se["type"] == "chill" for se in p.status_effects):
+                p.ability_flags.pop("chilled", None)
+
+            if not p.alive:
+                continue
+
+            # Haunted ghost countdown
+            if p.ability_flags.get("haunted_turns"):
+                p.ability_flags["haunted_turns"] -= 1
+                if p.ability_flags["haunted_turns"] <= 0:
+                    p.alive = False
+                    messages.append(f"Haunted Ghost fades away")
+                    continue
+
+            # Titan modifier: skip every other turn
+            if any(m.effect == "titan" for m in p.modifiers):
+                titan_skip = p.ability_flags.get("titan_skip", False)
+                p.ability_flags["titan_skip"] = not titan_skip
+                if titan_skip:
+                    p.ability_flags["chilled"] = True  # reuse chill to skip turn
+
+            # Unstable modifier: 1 self-damage per turn
+            if any(m.effect == "unstable" for m in p.modifiers):
+                p.hp -= 1
+                if p.hp <= 0:
+                    p.alive = False
+                    messages.append(f"Unstable kills {p.piece_type.value}")
+                    continue
+
+            # Golem: lose 1 max HP per turn permanently
+            if p.piece_type == PieceType.GOLEM:
+                p.max_hp = max(1, p.max_hp - 1)
+                if p.hp > p.max_hp:
+                    p.hp = p.max_hp
+                messages.append(f"Golem erodes (max HP:{p.max_hp})")
 
             # Summoner: spawn pawn on random adjacent empty cell
             if p.piece_type == PieceType.SUMMONER:
@@ -226,7 +437,6 @@ class Board:
                             empty_adj.append((sx, sy))
                 if empty_adj:
                     sx, sy = rng.choice(empty_adj)
-                    # Swarm Intelligence synergy: spawn Knight instead
                     spawn_type = PieceType.KNIGHT if "swarm_intelligence" in _synergies else PieceType.PAWN
                     spawn = Piece(spawn_type, team)
                     self.place_piece(spawn, sx, sy)
@@ -247,7 +457,6 @@ class Board:
                                 messages.append(f"Parasite kills {adj.piece_type.value}")
                             else:
                                 messages.append(f"Parasite drains {adj.piece_type.value} (HP:{adj.hp})")
-                # Life Drain synergy: also heal adjacent friendlies
                 if "life_drain" in _synergies:
                     for dx in [-1, 0, 1]:
                         for dy in [-1, 0, 1]:
@@ -257,6 +466,100 @@ class Board:
                             if adj and adj.team == team and adj.alive and adj is not p:
                                 adj.hp = min(adj.max_hp, adj.hp + 1)
 
+            # Cannon: attack nearest enemy in any straight line
+            if p.piece_type == PieceType.CANNON:
+                enemy_team = Team.ENEMY if team == Team.PLAYER else Team.PLAYER
+                nearest = None
+                nearest_dist = float('inf')
+                for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    for dist in range(1, max(self.width, self.height)):
+                        cx, cy = p.x + dx * dist, p.y + dy * dist
+                        if not self.in_bounds(cx, cy):
+                            break
+                        target = self.get_piece_at(cx, cy)
+                        if target and target.team == enemy_team and target.alive:
+                            if dist < nearest_dist:
+                                nearest_dist = dist
+                                nearest = target
+                            break
+                        if target:
+                            break  # blocked by friendly
+                if nearest:
+                    nearest.hp -= p.attack
+                    if nearest.hp <= 0:
+                        nearest.alive = False
+                        messages.append(f"Cannon kills {nearest.piece_type.value}!")
+                    else:
+                        messages.append(f"Cannon hits {nearest.piece_type.value} (HP:{nearest.hp})")
+
+            # Totem: heal friendlies within 2 cells for 1 HP
+            if p.piece_type == PieceType.TOTEM:
+                for ally in self.get_team_pieces(team):
+                    if ally is p or not ally.alive:
+                        continue
+                    if abs(ally.x - p.x) <= 2 and abs(ally.y - p.y) <= 2:
+                        ally.hp = min(ally.max_hp, ally.hp + 1)
+
+            # Bard: adjacent friendlies gain +2 ATK (tracked as buff)
+            if p.piece_type == PieceType.BARD:
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        if dx == 0 and dy == 0:
+                            continue
+                        adj = self.get_piece_at(p.x + dx, p.y + dy)
+                        if adj and adj.team == team and adj.alive and adj is not p:
+                            if not adj.ability_flags.get("bard_buffed"):
+                                buff_amt = 4 if "battle_hymn" in _synergies else 2
+                                adj.attack += buff_amt
+                                adj.ability_flags["bard_buffed"] = buff_amt
+
+            # Alchemist piece: convert current cell to random cell modifier
+            if p.piece_type == PieceType.ALCHEMIST_PIECE:
+                from modifiers import CELL_MODIFIERS, make_cell_modifier
+                cell_keys = list(CELL_MODIFIERS.keys())
+                key = rng.choice(cell_keys)
+                if (p.x, p.y) not in self.cell_modifiers:
+                    cm = make_cell_modifier(key, p.x, p.y)
+                    self.cell_modifiers[(p.x, p.y)] = cm
+                    messages.append(f"Alchemist creates {key} cell")
+
+            # Magnetic modifier: pull nearest enemy 1 cell closer
+            if any(m.effect == "magnetic" for m in p.modifiers):
+                enemy_team = Team.ENEMY if team == Team.PLAYER else Team.PLAYER
+                nearest = None
+                nearest_dist = float('inf')
+                for e in self.get_team_pieces(enemy_team):
+                    d = abs(e.x - p.x) + abs(e.y - p.y)
+                    if d < nearest_dist:
+                        nearest_dist = d
+                        nearest = e
+                if nearest and nearest_dist > 1:
+                    # Move 1 cell closer
+                    dx = 0 if nearest.x == p.x else (1 if p.x > nearest.x else -1)
+                    dy = 0 if nearest.y == p.y else (1 if p.y > nearest.y else -1)
+                    nx, ny = nearest.x + dx, nearest.y + dy
+                    if self.in_bounds(nx, ny) and self.is_empty(nx, ny):
+                        nearest.x = nx
+                        nearest.y = ny
+                        messages.append(f"Magnetic pulls {nearest.piece_type.value}")
+
+            # Witch: apply curse via combat (handled in move_piece as targeting)
+            # Witch's curse is applied when she "attacks" — handled in move_piece
+            # Shapeshifter: cycle piece type (handled here)
+            if p.piece_type == PieceType.SHAPESHIFTER:
+                roster_types = list({
+                    ally.piece_type for ally in self.get_team_pieces(team)
+                    if ally is not p and ally.alive
+                })
+                if roster_types:
+                    from pieces import PIECE_STATS
+                    new_type = rng.choice(roster_types)
+                    p.piece_type = new_type
+                    if new_type in PIECE_STATS:
+                        _, new_atk = PIECE_STATS[new_type]
+                        p.attack = new_atk
+                    messages.append(f"Shapeshifter becomes {new_type.value}")
+
         return messages
 
     def process_on_death(self, dead_piece: Piece, killer: Piece | None,
@@ -265,6 +568,7 @@ class Board:
         """Process on-death abilities. Returns log messages."""
         _synergies = active_synergies or []
         messages = []
+        self._grid_dirty = True  # on-death effects spawn/revive pieces
 
         # Bomb: 10 damage to everything in 3x3 (both teams)
         if dead_piece.piece_type == PieceType.BOMB:
@@ -273,7 +577,6 @@ class Board:
                     adj = self.get_piece_at(dead_piece.x + dx, dead_piece.y + dy)
                     if adj and adj.alive and adj is not dead_piece:
                         if "sacrifice" in _synergies:
-                            # Sacrifice synergy: convert enemies instead of damaging
                             if adj.team != dead_piece.team:
                                 adj.team = dead_piece.team
                                 messages.append(f"Bomb converts {adj.piece_type.value}!")
@@ -282,11 +585,72 @@ class Board:
                             if adj.hp <= 0:
                                 adj.alive = False
                                 messages.append(f"Bomb explosion kills {adj.piece_type.value}!")
-                                # Chain to other bombs if minefield synergy
                                 if adj.piece_type == PieceType.BOMB and "minefield" in _synergies:
                                     messages.extend(self.process_on_death(adj, dead_piece, rng, _synergies))
                             else:
                                 messages.append(f"Bomb damages {adj.piece_type.value} (HP:{adj.hp})")
+
+        # Explosive modifier: 5 damage in 3x3 on death
+        if any(m.effect == "explosive" for m in dead_piece.modifiers):
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    adj = self.get_piece_at(dead_piece.x + dx, dead_piece.y + dy)
+                    if adj and adj.alive and adj is not dead_piece:
+                        adj.hp -= 5
+                        if adj.hp <= 0:
+                            adj.alive = False
+                            messages.append(f"Explosive kills {adj.piece_type.value}!")
+                        else:
+                            messages.append(f"Explosive damages {adj.piece_type.value} (HP:{adj.hp})")
+
+        # Splitting modifier: spawn 2 Pawns with this piece's mods
+        if any(m.effect == "splitting" for m in dead_piece.modifiers):
+            from pieces import MODIFIERS
+            spawn_mods = [m for m in dead_piece.modifiers]
+            for _ in range(2):
+                empty_cells = [
+                    (ex, ey) for ex in range(self.width) for ey in range(self.height)
+                    if self.is_empty(ex, ey) and not self.is_blocked(ex, ey)
+                ]
+                if empty_cells:
+                    sx, sy = rng.choice(empty_cells)
+                    spawn = Piece(PieceType.PAWN, dead_piece.team)
+                    spawn.modifiers = list(spawn_mods)
+                    self.place_piece(spawn, sx, sy)
+                    messages.append(f"Splitting spawns Pawn at ({sx},{sy})")
+
+        # Haunted modifier: become Ghost at 50% HP for 2 turns
+        if any(m.effect == "haunted" for m in dead_piece.modifiers) and not dead_piece.ability_flags.get("haunted_used"):
+            dead_piece.piece_type = PieceType.GHOST
+            dead_piece.hp = max(1, dead_piece.max_hp // 2)
+            dead_piece.alive = True
+            dead_piece.ability_flags["haunted_used"] = True
+            dead_piece.ability_flags["haunted_turns"] = 2
+            messages.append(f"Haunted piece becomes Ghost!")
+
+        # Decoy: spawn 2 Pawns for the killer's team
+        if dead_piece.piece_type == PieceType.DECOY and killer:
+            for _ in range(2):
+                empty_cells = [
+                    (ex, ey) for ex in range(self.width) for ey in range(self.height)
+                    if self.is_empty(ex, ey) and not self.is_blocked(ex, ey)
+                ]
+                if empty_cells:
+                    sx, sy = rng.choice(empty_cells)
+                    spawn = Piece(PieceType.PAWN, killer.team)
+                    self.place_piece(spawn, sx, sy)
+                    messages.append(f"Decoy spawns Pawn for {killer.team.value} at ({sx},{sy})")
+
+        # Poltergeist: shuffle all enemy positions on death
+        if dead_piece.piece_type == PieceType.POLTERGEIST:
+            enemy_team = Team.ENEMY if dead_piece.team == Team.PLAYER else Team.PLAYER
+            enemies = [p for p in self.get_team_pieces(enemy_team) if p.alive]
+            if len(enemies) >= 2:
+                positions = [(p.x, p.y) for p in enemies]
+                rng.shuffle(positions)
+                for i, p in enumerate(enemies):
+                    p.x, p.y = positions[i]
+                messages.append("Poltergeist shuffles all enemy positions!")
 
         # Mimic: transform into killer's type, revive with full HP
         if dead_piece.piece_type == PieceType.MIMIC and killer and not dead_piece.ability_flags.get("mimic_transformed"):
@@ -303,6 +667,8 @@ class Board:
 
         # Phoenix: revive once at random empty cell with 50% HP
         if dead_piece.piece_type == PieceType.PHOENIX and not dead_piece.ability_flags.get("phoenix_revived"):
+            revive_hp_mult = 1.0 if "undying_legion" in _synergies else 0.5
+            revive_atk_bonus = 2 if "undying_legion" in _synergies else 0
             empty_cells = [
                 (ex, ey) for ex in range(self.width) for ey in range(self.height)
                 if self.is_empty(ex, ey) and not self.is_blocked(ex, ey)
@@ -312,9 +678,16 @@ class Board:
                 dead_piece.alive = True
                 dead_piece.x = rx
                 dead_piece.y = ry
-                dead_piece.hp = max(1, dead_piece.max_hp // 2)
+                dead_piece.hp = max(1, int(dead_piece.max_hp * revive_hp_mult))
+                dead_piece.attack += revive_atk_bonus
                 dead_piece.ability_flags["phoenix_revived"] = True
                 messages.append(f"Phoenix revives at ({rx},{ry}) with {dead_piece.hp} HP!")
+
+        # Time Mage: on death, set rewind flag (handled by autobattler)
+        if dead_piece.piece_type == PieceType.TIME_MAGE and not dead_piece.ability_flags.get("time_mage_used"):
+            dead_piece.ability_flags["time_mage_used"] = True
+            dead_piece.ability_flags["time_mage_rewind"] = True
+            messages.append("Time Mage triggers rewind!")
 
         return messages
 
@@ -333,6 +706,7 @@ class Board:
         """After any piece moves, same-team Mirror pieces make the reflected move."""
         _synergies = active_synergies or []
         messages = []
+        self._grid_dirty = True
         dx = moved_piece.x - old_x
         dy = moved_piece.y - old_y
         if dx == 0 and dy == 0:
@@ -395,6 +769,7 @@ class Board:
 
     def remove_piece(self, piece: Piece) -> None:
         piece.alive = False
+        self._grid_dirty = True
 
     def reset_round(self) -> None:
         """Reset cell modifiers to original cells, strip absorbed cell mods from pieces."""
@@ -406,6 +781,8 @@ class Board:
         self.blocked_tiles.clear()
         self.cell_modifiers.clear()
         self.dead_zone.clear()
+        self._grid.clear()
+        self._grid_dirty = False
         # Note: border_modifiers persist across rounds, not cleared here
 
     def add_obstacle(self, x: int, y: int) -> None:
@@ -436,6 +813,7 @@ class Board:
         new_board.cell_modifiers = {k: v.copy() for k, v in self.cell_modifiers.items()}
         new_board.border_modifiers = {k: v.copy() for k, v in self.border_modifiers.items()}
         new_board.dead_zone = set(self.dead_zone)
+        new_board._grid_dirty = True  # rebuilt lazily on first lookup
         return new_board
 
     # --- Sudden Death: ring collapse ---
@@ -486,6 +864,7 @@ class Board:
     def close_ring(self, ring: int) -> tuple[list[Piece], list[Piece]]:
         """Close ring `ring` of the board. Pushes pieces inward.
         Returns (killed_by_squeeze, all_pushed) lists."""
+        self._grid_dirty = True
         cells = self._ring_cells(ring)
         new_dead = set()
         for (x, y) in cells:

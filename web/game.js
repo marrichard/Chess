@@ -22,6 +22,29 @@ const PIECE_CHARS = {
   'void-player': '\u25C9',     'void-enemy': '\u25C9',
   'phoenix-player': '\u2600',  'phoenix-enemy': '\u2600',
   'king_rat-player': '\u2689', 'king_rat-enemy': '\u2689',
+  // Expansion pieces
+  'assassin-player': '\u2620',          'assassin-enemy': '\u2620',
+  'berserker_piece-player': '\u2694',   'berserker_piece-enemy': '\u2694',
+  'cannon-player': '\u25CE',            'cannon-enemy': '\u25CE',
+  'lancer-player': '\u2191',            'lancer-enemy': '\u2191',
+  'duelist-player': '\u2694',           'duelist-enemy': '\u2694',
+  'reaper-player': '\u2620',            'reaper-enemy': '\u2620',
+  'wyvern-player': '\u2682',            'wyvern-enemy': '\u2682',
+  'charger-player': '\u25B6',           'charger-enemy': '\u25B6',
+  'sentinel-player': '\u2616',          'sentinel-enemy': '\u2616',
+  'healer-player': '\u2695',            'healer-enemy': '\u2695',
+  'bard-player': '\u266A',              'bard-enemy': '\u266A',
+  'wall-player': '\u2588',              'wall-enemy': '\u2588',
+  'totem-player': '\u2641',             'totem-enemy': '\u2641',
+  'decoy-player': '\u2302',             'decoy-enemy': '\u2302',
+  'shapeshifter-player': '\u221E',      'shapeshifter-enemy': '\u221E',
+  'time_mage-player': '\u231A',         'time_mage-enemy': '\u231A',
+  'imp-player': '\u2666',               'imp-enemy': '\u2666',
+  'poltergeist-player': '\u2622',       'poltergeist-enemy': '\u2622',
+  'alchemist_piece-player': '\u2697',   'alchemist_piece-enemy': '\u2697',
+  'golem-player': '\u25A0',             'golem-enemy': '\u25A0',
+  'witch-player': '\u2605',             'witch-enemy': '\u2605',
+  'trickster-player': '\u2740',         'trickster-enemy': '\u2740',
 };
 
 function pieceChar(type, team) {
@@ -194,6 +217,11 @@ function handleStateUpdate(state) {
   oldState = currentState;
   currentState = state;
 
+  // Show achievement toasts
+  if (state.newAchievements && state.newAchievements.length > 0) {
+    showAchievementToasts(state.newAchievements);
+  }
+
   // Detect animations
   detectAnimations(oldState, state);
 
@@ -202,6 +230,56 @@ function handleStateUpdate(state) {
 
   // Auto-battle stepping
   handleAutoBattle(state);
+}
+
+// ================================================================
+// ACHIEVEMENT TOAST
+// ================================================================
+
+let achievementToastQueue = [];
+let achievementToastActive = false;
+
+function showAchievementToasts(achievements) {
+  for (const ach of achievements) {
+    achievementToastQueue.push(ach);
+  }
+  if (!achievementToastActive) {
+    showNextAchievementToast();
+  }
+}
+
+function showNextAchievementToast() {
+  if (achievementToastQueue.length === 0) {
+    achievementToastActive = false;
+    return;
+  }
+  achievementToastActive = true;
+  const ach = achievementToastQueue.shift();
+
+  const toast = document.createElement('div');
+  toast.className = 'achievement-toast';
+
+  let rewardHtml = '';
+  if (ach.rewards && ach.rewards.length > 0) {
+    const r = ach.rewards[0];
+    rewardHtml = '<span class="achievement-toast-reward">Unlocked: ' + esc(r.type) + ' — ' + esc(r.key) + '</span>';
+  }
+
+  toast.innerHTML =
+    '<span class="achievement-toast-icon">' + esc(ach.icon || '\u2605') + '</span>' +
+    '<div class="achievement-toast-text">' +
+      '<span class="achievement-toast-title">Achievement Unlocked</span>' +
+      '<span class="achievement-toast-name">' + esc(ach.name) + '</span>' +
+      rewardHtml +
+    '</div>';
+
+  document.body.appendChild(toast);
+
+  // Remove after animation and show next
+  setTimeout(() => {
+    toast.remove();
+    showNextAchievementToast();
+  }, 4000);
 }
 
 // ================================================================
@@ -249,9 +327,20 @@ function handleAutoBattle(state) {
 
 // pendingSlides: map of "toX,toY" → {fromX, fromY} for the next renderBoard call
 let pendingSlides = {};
+// pendingSpawns: set of "x,y" keys for pieces that just appeared (no matching old piece)
+let pendingSpawns = {};
+// pendingHits: set of "x,y" keys for pieces that took damage this frame
+let pendingHits = {};
+// pendingDeaths: array of {x, y, type, team, mods, deathStyle} for pieces that disappeared
+let pendingDeaths = [];
+// previousBoardState: snapshot of the previous board for HP diffing
+let previousBoardState = null;
 
 function detectAnimations(oldSt, newSt) {
   pendingSlides = {};
+  pendingSpawns = {};
+  pendingHits = {};
+  pendingDeaths = [];
   if (!oldSt || !newSt) return;
   if (!oldSt.board || !newSt.board) return;
 
@@ -259,7 +348,7 @@ function detectAnimations(oldSt, newSt) {
   if (oldSt.phase !== newSt.phase) return;
 
   // Build maps: type+team+mods → list of positions for old and new boards
-  const oldPieces = []; // {type, team, x, y, key}
+  const oldPieces = []; // {type, team, x, y, key, mods}
   const newPieces = [];
 
   for (let y = 0; y < 8; y++) {
@@ -268,11 +357,11 @@ function detectAnimations(oldSt, newSt) {
       const nc = newSt.board[y] && newSt.board[y][x];
       if (oc && oc.piece) {
         const modKey = (oc.piece.modifiers || []).map(m => m.effect).sort().join(',');
-        oldPieces.push({ type: oc.piece.type, team: oc.piece.team, x, y, key: oc.piece.type + '|' + oc.piece.team + '|' + modKey });
+        oldPieces.push({ type: oc.piece.type, team: oc.piece.team, x, y, key: oc.piece.type + '|' + oc.piece.team + '|' + modKey, mods: (oc.piece.modifiers || []).map(m => m.effect) });
       }
       if (nc && nc.piece) {
         const modKey = (nc.piece.modifiers || []).map(m => m.effect).sort().join(',');
-        newPieces.push({ type: nc.piece.type, team: nc.piece.team, x, y, key: nc.piece.type + '|' + nc.piece.team + '|' + modKey });
+        newPieces.push({ type: nc.piece.type, team: nc.piece.team, x, y, key: nc.piece.type + '|' + nc.piece.team + '|' + modKey, mods: (nc.piece.modifiers || []).map(m => m.effect) });
       }
     }
   }
@@ -280,12 +369,14 @@ function detectAnimations(oldSt, newSt) {
   // Match pieces: for each new piece, find the closest old piece with same key
   // that isn't already at the same position
   const usedOld = new Set();
+  const matchedNew = new Set();
 
   for (const np of newPieces) {
     // Check if a piece already existed here with same key — no move
     const stayIdx = oldPieces.findIndex((op, i) => !usedOld.has(i) && op.x === np.x && op.y === np.y && op.key === np.key);
     if (stayIdx >= 0) {
       usedOld.add(stayIdx);
+      matchedNew.add(np);
       continue;
     }
 
@@ -308,12 +399,38 @@ function detectAnimations(oldSt, newSt) {
 
     if (bestIdx >= 0) {
       usedOld.add(bestIdx);
+      matchedNew.add(np);
       const op = oldPieces[bestIdx];
       pendingSlides[np.x + ',' + np.y] = { fromX: op.x, fromY: op.y };
     }
   }
 
-  // Detect captures and HP changes
+  // Detect spawns: new pieces with no matching old piece
+  for (const np of newPieces) {
+    if (!matchedNew.has(np)) {
+      pendingSpawns[np.x + ',' + np.y] = true;
+    }
+  }
+
+  // Detect deaths: old pieces with no matching new piece
+  for (let i = 0; i < oldPieces.length; i++) {
+    if (!usedOld.has(i)) {
+      const op = oldPieces[i];
+      // Determine death style based on modifiers
+      let deathStyle = 'standard';
+      if (op.mods.includes('flaming') || op.mods.includes('blazing')) {
+        deathStyle = 'fire';
+      } else if (op.mods.includes('toxic') || op.mods.includes('venomous')) {
+        deathStyle = 'poison';
+      }
+      pendingDeaths.push({
+        x: op.x, y: op.y, type: op.type, team: op.team,
+        deathStyle: deathStyle,
+      });
+    }
+  }
+
+  // Detect captures/disappearances and HP changes
   for (let y = 0; y < 8; y++) {
     for (let x = 0; x < 8; x++) {
       const oldCell = oldSt.board[y] && oldSt.board[y][x];
@@ -333,15 +450,30 @@ function detectAnimations(oldSt, newSt) {
           const hpDelta = newCell.piece.hp - oldCell.piece.hp;
           if (hpDelta !== 0) {
             spawnDamagePopup(x, y, hpDelta);
+            if (hpDelta < 0) {
+              pendingHits[x + ',' + y] = true;
+              // Spawn heal pulse for heals
+            }
+          }
+          if (hpDelta > 0) {
+            spawnHealPulse(x, y);
           }
         }
       }
     }
   }
 
+  // Spawn death animations
+  for (const death of pendingDeaths) {
+    spawnDeathAnimation(death.x, death.y, death.type, death.team, death.deathStyle);
+  }
+
   // Detect gold change
   if (oldSt.gold !== undefined && newSt.gold !== undefined && oldSt.gold !== newSt.gold) {
     flashValue('stat-gold');
+    if (newSt.gold > oldSt.gold) {
+      spawnGoldSparkle();
+    }
   }
 
   // Detect ELO change
@@ -354,9 +486,24 @@ function detectAnimations(oldSt, newSt) {
     showWaveAnnouncement(newSt.wave);
   }
 
-  // Sudden death announcement
+  // Sudden death announcement + vignette
   if (!oldSt.suddenDeath && newSt.suddenDeath) {
     showSuddenDeathAnnouncement();
+    const bc = document.getElementById('board-container');
+    if (bc) bc.classList.add('sudden-death-active');
+  }
+
+  // Boss entrance effect (when transitioning from boss_intro to battle)
+  if (newSt.phase === 'battle' && oldSt.phase === 'boss_intro') {
+    triggerBossEntrance();
+  }
+
+  // Battle victory effect
+  if (oldSt.phase === 'battle' && newSt.phase === 'result') {
+    const won = newSt.wins > (oldSt.wins || 0);
+    if (won) {
+      triggerVictoryEffect();
+    }
   }
 
   // Ring collapse — spawn particles on newly dead cells
@@ -449,6 +596,239 @@ function triggerShake() {
 }
 
 // ================================================================
+// DEATH ANIMATIONS
+// ================================================================
+
+function spawnDeathAnimation(boardX, boardY, pieceType, team, deathStyle) {
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+
+  // Create temporary ghost element at piece's last position
+  const boardEl = document.getElementById('board');
+  if (!boardEl) return;
+  const rect = boardEl.getBoundingClientRect();
+  const cellSize = rect.width / 8;
+
+  const ghost = document.createElement('div');
+  ghost.className = 'death-ghost';
+  ghost.style.left = (rect.left + boardX * cellSize) + 'px';
+  ghost.style.top = (rect.top + boardY * cellSize) + 'px';
+  ghost.style.width = cellSize + 'px';
+  ghost.style.height = cellSize + 'px';
+
+  // Add SVG piece to ghost
+  if (typeof PieceRenderer !== 'undefined') {
+    ghost.appendChild(PieceRenderer.create(pieceType, team, 'board'));
+  }
+
+  // Apply death animation class based on style
+  if (deathStyle === 'fire') {
+    ghost.classList.add('piece-dying-fire');
+    spawnFireDeathParticles(boardX, boardY);
+  } else if (deathStyle === 'poison') {
+    ghost.classList.add('piece-dying-poison');
+    spawnPoisonDeathParticles(boardX, boardY);
+  } else {
+    ghost.classList.add('piece-dying');
+    spawnDeathParticles(boardX, boardY, team);
+  }
+
+  document.body.appendChild(ghost);
+  setTimeout(() => ghost.remove(), 500);
+}
+
+function spawnDeathParticles(boardX, boardY, team) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  const color = team === 'player' ? '#5082ff' : '#ff4646';
+  for (let i = 0; i < 5; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 40;
+    const life = 0.3 + Math.random() * 0.3;
+    particles.push({
+      x: pos.x, y: pos.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: color,
+      size: 2 + Math.random() * 2,
+    });
+  }
+}
+
+function spawnFireDeathParticles(boardX, boardY) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  const colors = ['#ff4400', '#ff8800', '#ffcc00', '#ff2200'];
+  for (let i = 0; i < 10; i++) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+    const speed = 60 + Math.random() * 60;
+    const life = 0.4 + Math.random() * 0.3;
+    particles.push({
+      x: pos.x + (Math.random() - 0.5) * 10,
+      y: pos.y,
+      vx: Math.cos(angle) * speed * 0.5,
+      vy: -(40 + Math.random() * 60),
+      life: life, maxLife: life,
+      color: colors[i % colors.length],
+      size: 2 + Math.random() * 3,
+      noGravity: true,
+    });
+  }
+}
+
+function spawnPoisonDeathParticles(boardX, boardY) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  const colors = ['#44ff44', '#22cc22', '#88ff88', '#00aa00'];
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 20 + Math.random() * 30;
+    const life = 0.5 + Math.random() * 0.3;
+    particles.push({
+      x: pos.x + (Math.random() - 0.5) * 16,
+      y: pos.y + (Math.random() - 0.5) * 16,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 20,
+      life: life, maxLife: life,
+      color: colors[i % colors.length],
+      size: 3 + Math.random() * 3,
+      noGravity: true,
+    });
+  }
+}
+
+// ================================================================
+// HEAL PULSE PARTICLES
+// ================================================================
+
+function spawnHealPulse(boardX, boardY) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  for (let i = 0; i < 4; i++) {
+    const life = 0.5 + Math.random() * 0.3;
+    particles.push({
+      x: pos.x + (Math.random() - 0.5) * 16,
+      y: pos.y,
+      vx: (Math.random() - 0.5) * 10,
+      vy: -(30 + Math.random() * 20),
+      life: life, maxLife: life,
+      color: '#4ade80',
+      size: 2 + Math.random() * 2,
+      noGravity: true,
+      text: '+',
+    });
+  }
+}
+
+// ================================================================
+// GOLD SPARKLE PARTICLES
+// ================================================================
+
+function spawnGoldSparkle() {
+  if (!particlesEnabled) return;
+  const el = document.getElementById('stat-gold');
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 30;
+    const life = 0.4 + Math.random() * 0.3;
+    particles.push({
+      x: cx + (Math.random() - 0.5) * 20,
+      y: cy + (Math.random() - 0.5) * 10,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: i % 2 === 0 ? '#ffd700' : '#ffec80',
+      size: 1.5 + Math.random() * 1.5,
+      noGravity: true,
+    });
+  }
+}
+
+// ================================================================
+// SCREEN EFFECTS
+// ================================================================
+
+function triggerBossEntrance() {
+  // Full-screen flash
+  const flash = document.createElement('div');
+  flash.className = 'screen-flash';
+  flash.style.background = 'white';
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 400);
+
+  // Board container vignette
+  const bc = document.getElementById('board-container');
+  if (bc) {
+    bc.classList.remove('boss-entrance');
+    void bc.offsetWidth;
+    bc.classList.add('boss-entrance');
+    setTimeout(() => bc.classList.remove('boss-entrance'), 1200);
+  }
+
+  triggerShake();
+}
+
+function triggerVictoryEffect() {
+  // Screen shake
+  const board = document.getElementById('board');
+  if (board) {
+    board.classList.remove('victory-shake');
+    void board.offsetWidth;
+    board.classList.add('victory-shake');
+    setTimeout(() => board.classList.remove('victory-shake'), 500);
+  }
+
+  // Burst of particles from center
+  if (!particlesEnabled) return;
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 80 + Math.random() * 80;
+    const life = 0.6 + Math.random() * 0.4;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: i % 3 === 0 ? '#5082ff' : (i % 3 === 1 ? '#ffffff' : '#ffd700'),
+      size: 2 + Math.random() * 3,
+      noGravity: true,
+    });
+  }
+}
+
+// ================================================================
+// SHOCKWAVE RING PARTICLE
+// ================================================================
+
+function spawnShockwaveRing(boardX, boardY, color) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  particles.push({
+    x: pos.x, y: pos.y,
+    vx: 0, vy: 0,
+    life: 0.5, maxLife: 0.5,
+    color: color || '#ffffff',
+    size: 5,
+    noGravity: true,
+    ring: true,
+    ringRadius: 5,
+    ringMaxRadius: 60,
+  });
+}
+
+// ================================================================
 // PARTICLE SYSTEM
 // ================================================================
 
@@ -492,6 +872,8 @@ function spawnCaptureBurst(boardX, boardY, color) {
       size: 1 + Math.random(),
     });
   }
+  // Shockwave ring
+  spawnShockwaveRing(boardX, boardY, color);
 }
 
 function spawnVictoryBurst() {
@@ -554,6 +936,54 @@ function spawnBossRing(boardX, boardY) {
 
 let lastParticleTime = 0;
 let ambientTimer = 0;
+let auraTimer = 0;
+
+// Modifier colors for aura particles
+const MOD_AURA_COLORS = {
+  flaming: '#ff6b35', blazing: '#ff9900', swift: '#00dddd', armored: '#8888cc',
+  toxic: '#44cc44', venomous: '#22aa22', vampiric: '#cc2222', ethereal: '#88ccff',
+  royal: '#ffd700', unstable: '#ff2222', haunted: '#8844cc', frozen: '#44aaff',
+  thorny: '#66aa33',
+};
+
+function spawnModifierAuras(dt) {
+  auraTimer += dt;
+  if (auraTimer < 0.8) return; // spawn every 0.8s
+  auraTimer = 0;
+  if (!currentState || !currentState.board) return;
+
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const cell = currentState.board[y] && currentState.board[y][x];
+      if (!cell || !cell.piece || cell.piece.team !== 'player') continue;
+      if (!cell.piece.modifiers || cell.piece.modifiers.length === 0) continue;
+
+      const pos = boardToScreen(x, y);
+      if (!pos) continue;
+
+      // Pick first modifier with a known aura color
+      for (const mod of cell.piece.modifiers) {
+        const color = MOD_AURA_COLORS[mod.effect];
+        if (!color) continue;
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 8 + Math.random() * 8;
+        const life = 0.6 + Math.random() * 0.4;
+        particles.push({
+          x: pos.x + Math.cos(angle) * dist,
+          y: pos.y + Math.sin(angle) * dist,
+          vx: Math.cos(angle + Math.PI / 2) * 15,
+          vy: Math.sin(angle + Math.PI / 2) * 15 - 5,
+          life: life, maxLife: life,
+          color: color,
+          size: 1 + Math.random(),
+          noGravity: true,
+          ambient: true,
+        });
+        break; // Only one aura particle per piece per spawn cycle
+      }
+    }
+  }
+}
 
 function updateParticles(time) {
   requestAnimationFrame(updateParticles);
@@ -580,6 +1010,14 @@ function updateParticles(time) {
         ambient: true,
       });
     }
+
+    // Modifier aura particles — spawn orbiting motes for player pieces with modifiers
+    spawnModifierAuras(dt);
+  }
+
+  // Cap particle count for performance
+  if (particles.length > 200) {
+    particles.splice(0, particles.length - 200);
   }
 
   particleCtx.clearRect(0, 0, particleCtx.canvas.width, particleCtx.canvas.height);
@@ -600,9 +1038,29 @@ function updateParticles(time) {
     const alpha = p.ambient ? 0.15 : Math.max(0, p.life / p.maxLife);
     particleCtx.globalAlpha = alpha;
     particleCtx.fillStyle = p.color;
-    particleCtx.beginPath();
-    particleCtx.arc(p.x, p.y, p.size * (p.ambient ? 1 : alpha), 0, Math.PI * 2);
-    particleCtx.fill();
+
+    // Ring particles — expanding circle outline
+    if (p.ring) {
+      const progress = 1 - (p.life / p.maxLife);
+      const radius = p.ringRadius + (p.ringMaxRadius - p.ringRadius) * progress;
+      particleCtx.strokeStyle = p.color;
+      particleCtx.lineWidth = 2 * alpha;
+      particleCtx.beginPath();
+      particleCtx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      particleCtx.stroke();
+    }
+    // Text particles (e.g., heal "+")
+    else if (p.text) {
+      particleCtx.font = (p.size * 4) + 'px monospace';
+      particleCtx.textAlign = 'center';
+      particleCtx.fillText(p.text, p.x, p.y);
+    }
+    // Standard dot particles
+    else {
+      particleCtx.beginPath();
+      particleCtx.arc(p.x, p.y, p.size * (p.ambient ? 1 : alpha), 0, Math.PI * 2);
+      particleCtx.fill();
+    }
   }
   particleCtx.globalCompositeOperation = 'source-over';
   particleCtx.globalAlpha = 1;
@@ -677,6 +1135,21 @@ function renderBoardView(state) {
   const modeText = state.tournament ? 'Tournament' : 'Free Play';
   document.getElementById('stat-mode').textContent = modeText;
   document.getElementById('stat-difficulty').textContent = state.tournament ? '(' + state.difficulty + ')' : '';
+
+  // Master info
+  const masterEl = document.getElementById('stat-master');
+  if (masterEl && state.master) {
+    masterEl.textContent = state.master.icon + ' ' + state.master.name;
+    const [r, g, b] = state.master.color;
+    masterEl.style.color = `rgb(${r},${g},${b})`;
+    masterEl.title = state.master.passive + ' / ' + state.master.drawback;
+  }
+
+  // Sudden death vignette
+  const bc = document.getElementById('board-container');
+  if (bc) {
+    bc.classList.toggle('sudden-death-active', !!state.suddenDeath);
+  }
 
   // Board
   renderBoard('board', state);
@@ -771,7 +1244,32 @@ function renderBoard(boardId, state) {
           }
         }
 
-        pieceEl.textContent = pieceChar(cell.piece.type, cell.piece.team);
+        // SVG piece rendering (falls back to unicode if PieceRenderer unavailable)
+        if (typeof PieceRenderer !== 'undefined') {
+          pieceEl.appendChild(PieceRenderer.create(cell.piece.type, cell.piece.team, 'board'));
+        } else {
+          pieceEl.textContent = pieceChar(cell.piece.type, cell.piece.team);
+        }
+
+        // Attack lunge animation
+        if (cell.piece.lastAction && cell.piece.lastAction.type === 'attack') {
+          const la = cell.piece.lastAction;
+          const lungeX = la.targetX - la.fromX;
+          const lungeY = la.targetY - la.fromY;
+          pieceEl.style.setProperty('--lunge-x', lungeX || 0);
+          pieceEl.style.setProperty('--lunge-y', lungeY || 0);
+          pieceEl.classList.add('piece-attacking');
+        }
+
+        // Spawn animation — detected via frame diffing in detectAnimations
+        if (pendingSpawns[x + ',' + y]) {
+          pieceEl.classList.add('piece-spawning');
+        }
+
+        // Damage flash — detected via frame diffing in detectAnimations
+        if (pendingHits[x + ',' + y]) {
+          pieceEl.classList.add('piece-hit');
+        }
 
         // HP bar
         if (cell.piece.maxHp && cell.piece.maxHp > 0) {
@@ -842,8 +1340,11 @@ function renderBoard(boardId, state) {
     });
   }
 
-  // Clear pending slides after rendering
+  // Clear pending animation state after rendering
   pendingSlides = {};
+  pendingSpawns = {};
+  pendingHits = {};
+  pendingDeaths = [];
 }
 
 function renderTarots(state) {
@@ -979,10 +1480,15 @@ function renderRoster(state) {
     div.className = 'roster-piece';
     if (r.placed) div.classList.add('placed');
     if (i === state.rosterSelection && !r.placed) div.classList.add('selected');
+    if (r.rarity && r.rarity !== 'common') div.classList.add('rarity-' + r.rarity);
 
     const icon = document.createElement('span');
     icon.className = 'piece-icon player-color';
-    icon.textContent = pieceChar(r.type, 'player');
+    if (typeof PieceRenderer !== 'undefined') {
+      icon.appendChild(PieceRenderer.create(r.type, 'player', 'roster'));
+    } else {
+      icon.textContent = pieceChar(r.type, 'player');
+    }
     div.appendChild(icon);
 
     const label = document.createElement('span');
@@ -1087,15 +1593,33 @@ function renderShop(state, animate) {
         card.dataset.shopRi = ri;
         card.dataset.shopCi = ci;
 
+        // Rarity class
+        if (item.rarity && item.rarity !== 'common') {
+          card.classList.add('rarity-' + item.rarity);
+        }
+        // Sell item styling
+        if (item.cost < 0 || item.type === 'sell_piece') {
+          card.classList.add('sell-item');
+        }
+
+        const rarityBadge = (item.rarity && item.rarity !== 'common')
+          ? '<span class="rarity-badge ' + item.rarity + '">' + esc(item.rarity) + '</span>'
+          : '';
+        const costDisplay = (item.cost < 0)
+          ? '+' + Math.abs(item.cost) + 'g'
+          : item.cost + 'g';
+
         card.innerHTML =
+          rarityBadge +
           '<span class="shop-card-icon" style="color:rgb(' + item.color.join(',') + ')">' + esc(item.icon) + '</span>' +
           '<span class="shop-card-name">' + esc(item.name) + '</span>' +
           '<span class="shop-card-desc">' + esc(item.description) + '</span>' +
-          '<span class="shop-card-cost">' + item.cost + 'g</span>';
+          '<span class="shop-card-cost">' + costDisplay + '</span>';
 
         // Tooltip
         if (item.description) {
-          attachTooltip(card, '<div class="tt-title">' + esc(item.name) + '</div><div class="tt-desc">' + esc(item.description) + '</div><div class="tt-mod">' + item.cost + 'g</div>');
+          const ttCost = item.cost < 0 ? '+' + Math.abs(item.cost) + 'g' : item.cost + 'g';
+          attachTooltip(card, '<div class="tt-title">' + esc(item.name) + '</div><div class="tt-desc">' + esc(item.description) + '</div><div class="tt-mod">' + ttCost + '</div>');
         }
 
         // Hover selects, click confirms
@@ -1126,7 +1650,7 @@ function renderShop(state, animate) {
     const item = row.items[ci];
     if (!item) return;
     card.classList.toggle('selected', ri === state.shopRow && ci === state.shopCol);
-    card.classList.toggle('unaffordable', state.gold < item.cost);
+    card.classList.toggle('unaffordable', item.cost > 0 && state.gold < item.cost);
   });
 
   // Done button
@@ -1166,13 +1690,39 @@ function renderDraft(state, animate) {
       if (animate) card.style.animationDelay = (i * 50) + 'ms';
       card.dataset.draftIdx = i;
 
-      let icon = '\u2659'; // default pawn
-      if (opt.pieceType) icon = pieceChar(opt.pieceType, 'player');
-      else if (opt.type === 'combine') icon = pieceChar(opt.to, 'player');
+      let draftPieceType = opt.pieceType || (opt.type === 'combine' ? opt.to : null);
+
+      // Rarity class for draft cards
+      if (opt.rarity && opt.rarity !== 'common') {
+        card.classList.add('rarity-' + opt.rarity);
+      }
+
+      // Legendary reveal animation
+      if (opt.rarity === 'legendary' && animate) {
+        card.classList.add('legendary-reveal');
+      }
+
+      const draftRarityBadge = (opt.rarity && opt.rarity !== 'common')
+        ? '<span class="rarity-badge ' + opt.rarity + '">' + esc(opt.rarity) + '</span>'
+        : '';
+
+      // Build card content
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'draft-card-icon player-color';
+      if (draftPieceType && typeof PieceRenderer !== 'undefined') {
+        iconSpan.appendChild(PieceRenderer.create(draftPieceType, 'player', 'draft'));
+      } else {
+        let icon = '\u2659';
+        if (opt.pieceType) icon = pieceChar(opt.pieceType, 'player');
+        else if (opt.type === 'combine') icon = pieceChar(opt.to, 'player');
+        iconSpan.textContent = icon;
+      }
 
       card.innerHTML =
-        '<span class="draft-card-icon player-color">' + icon + '</span>' +
+        draftRarityBadge +
         '<span class="draft-card-desc">' + esc(opt.desc) + '</span>';
+      // Insert icon before desc
+      card.insertBefore(iconSpan, card.querySelector('.draft-card-desc'));
 
       // Tooltip
       if (opt.desc) {
@@ -1249,11 +1799,18 @@ function renderPieceMod(state) {
     card.className = 'roster-select-card';
     if (i === state.rosterSelection) card.classList.add('selected');
 
-    card.innerHTML =
-      '<span class="piece-icon player-color">' + pieceChar(r.type, 'player') + '</span>' +
-      '<span class="piece-name">' + esc(r.type) +
-      (r.modifiers.length > 0 ? ' [' + r.modifiers.map(m => m.effect[0]).join('') + ']' : '') +
-      '</span>';
+    const pmIcon = document.createElement('span');
+    pmIcon.className = 'piece-icon player-color';
+    if (typeof PieceRenderer !== 'undefined') {
+      pmIcon.appendChild(PieceRenderer.create(r.type, 'player', 'roster'));
+    } else {
+      pmIcon.textContent = pieceChar(r.type, 'player');
+    }
+    card.appendChild(pmIcon);
+    const pmName = document.createElement('span');
+    pmName.className = 'piece-name';
+    pmName.textContent = r.type + (r.modifiers.length > 0 ? ' [' + r.modifiers.map(m => m.effect[0]).join('') + ']' : '');
+    card.appendChild(pmName);
 
     // Tooltip
     let pmTt = '<div class="tt-title">' + esc(r.type) + '</div>';
@@ -1326,7 +1883,12 @@ function renderSwapTarot(state) {
 
 function renderBossIntro(state, animate) {
   const icon = document.getElementById('boss-icon');
-  icon.textContent = pieceChar(state.bossType || 'king', 'enemy');
+  icon.innerHTML = '';
+  if (typeof PieceRenderer !== 'undefined') {
+    icon.appendChild(PieceRenderer.create(state.bossType || 'king', 'enemy', 'draft'));
+  } else {
+    icon.textContent = pieceChar(state.bossType || 'king', 'enemy');
+  }
 
   const title = document.getElementById('boss-title');
   title.textContent = 'Boss: ' + (state.bossType || 'Unknown').toUpperCase();
@@ -1545,6 +2107,9 @@ function pieceDisplayName(rawType) {
 
 function buildPieceTooltip(piece) {
   let html = '<div class="tt-title">' + esc(pieceDisplayName(piece.type)) + '</div>';
+  if (piece.rarity && piece.rarity !== 'common') {
+    html += '<div class="tt-rarity rarity-' + piece.rarity + '">' + piece.rarity.toUpperCase() + '</div>';
+  }
   if (piece.moveDesc) {
     html += '<div class="tt-move">' + esc(piece.moveDesc) + '</div>';
   }
@@ -1558,7 +2123,8 @@ function buildPieceTooltip(piece) {
   if (piece.modifiers && piece.modifiers.length > 0) {
     html += '<div class="tt-sep"></div>';
     for (const m of piece.modifiers) {
-      html += '<div class="tt-mod">\u2694 ' + esc(m.name) + '</div>';
+      const modRarityClass = (m.rarity && m.rarity !== 'common') ? ' rarity-' + m.rarity : '';
+      html += '<div class="tt-mod' + modRarityClass + '">\u2694 ' + esc(m.name) + '</div>';
       if (m.description) html += '<div class="tt-desc">  ' + esc(m.description) + '</div>';
     }
   }

@@ -28,6 +28,29 @@ class PieceType(Enum):
     VOID = "void"
     PHOENIX = "phoenix"
     KING_RAT = "king_rat"
+    # --- Expansion pieces ---
+    ASSASSIN = "assassin"
+    BERSERKER_PIECE = "berserker_piece"
+    CANNON = "cannon"
+    LANCER = "lancer"
+    DUELIST = "duelist"
+    REAPER = "reaper"
+    WYVERN = "wyvern"
+    CHARGER = "charger"
+    SENTINEL = "sentinel"
+    HEALER = "healer"
+    BARD = "bard"
+    WALL = "wall"
+    TOTEM = "totem"
+    DECOY = "decoy"
+    SHAPESHIFTER = "shapeshifter"
+    TIME_MAGE = "time_mage"
+    IMP = "imp"
+    POLTERGEIST = "poltergeist"
+    ALCHEMIST_PIECE = "alchemist_piece"
+    GOLEM = "golem"
+    WITCH = "witch"
+    TRICKSTER = "trickster"
 
 
 class Team(Enum):
@@ -74,6 +97,51 @@ PIECE_CHARS = {
     (PieceType.PHOENIX, Team.ENEMY): "\u2600",
     (PieceType.KING_RAT, Team.PLAYER): "\u2689",
     (PieceType.KING_RAT, Team.ENEMY): "\u2689",
+    # --- Expansion pieces ---
+    (PieceType.ASSASSIN, Team.PLAYER): "\u2620",
+    (PieceType.ASSASSIN, Team.ENEMY): "\u2620",
+    (PieceType.BERSERKER_PIECE, Team.PLAYER): "\u2694",
+    (PieceType.BERSERKER_PIECE, Team.ENEMY): "\u2694",
+    (PieceType.CANNON, Team.PLAYER): "\u25CE",
+    (PieceType.CANNON, Team.ENEMY): "\u25CE",
+    (PieceType.LANCER, Team.PLAYER): "\u2191",
+    (PieceType.LANCER, Team.ENEMY): "\u2191",
+    (PieceType.DUELIST, Team.PLAYER): "\u2694",
+    (PieceType.DUELIST, Team.ENEMY): "\u2694",
+    (PieceType.REAPER, Team.PLAYER): "\u2620",
+    (PieceType.REAPER, Team.ENEMY): "\u2620",
+    (PieceType.WYVERN, Team.PLAYER): "\u2682",
+    (PieceType.WYVERN, Team.ENEMY): "\u2682",
+    (PieceType.CHARGER, Team.PLAYER): "\u25B6",
+    (PieceType.CHARGER, Team.ENEMY): "\u25B6",
+    (PieceType.SENTINEL, Team.PLAYER): "\u2616",
+    (PieceType.SENTINEL, Team.ENEMY): "\u2616",
+    (PieceType.HEALER, Team.PLAYER): "\u2695",
+    (PieceType.HEALER, Team.ENEMY): "\u2695",
+    (PieceType.BARD, Team.PLAYER): "\u266A",
+    (PieceType.BARD, Team.ENEMY): "\u266A",
+    (PieceType.WALL, Team.PLAYER): "\u2588",
+    (PieceType.WALL, Team.ENEMY): "\u2588",
+    (PieceType.TOTEM, Team.PLAYER): "\u2641",
+    (PieceType.TOTEM, Team.ENEMY): "\u2641",
+    (PieceType.DECOY, Team.PLAYER): "\u2302",
+    (PieceType.DECOY, Team.ENEMY): "\u2302",
+    (PieceType.SHAPESHIFTER, Team.PLAYER): "\u221E",
+    (PieceType.SHAPESHIFTER, Team.ENEMY): "\u221E",
+    (PieceType.TIME_MAGE, Team.PLAYER): "\u231A",
+    (PieceType.TIME_MAGE, Team.ENEMY): "\u231A",
+    (PieceType.IMP, Team.PLAYER): "\u2666",
+    (PieceType.IMP, Team.ENEMY): "\u2666",
+    (PieceType.POLTERGEIST, Team.PLAYER): "\u2622",
+    (PieceType.POLTERGEIST, Team.ENEMY): "\u2622",
+    (PieceType.ALCHEMIST_PIECE, Team.PLAYER): "\u2697",
+    (PieceType.ALCHEMIST_PIECE, Team.ENEMY): "\u2697",
+    (PieceType.GOLEM, Team.PLAYER): "\u25A0",
+    (PieceType.GOLEM, Team.ENEMY): "\u25A0",
+    (PieceType.WITCH, Team.PLAYER): "\u2605",
+    (PieceType.WITCH, Team.ENEMY): "\u2605",
+    (PieceType.TRICKSTER, Team.PLAYER): "\u2740",
+    (PieceType.TRICKSTER, Team.ENEMY): "\u2740",
 }
 
 # Fallback single-letter display
@@ -102,6 +170,29 @@ PIECE_LETTERS = {
     (PieceType.VOID, Team.PLAYER): "V", (PieceType.VOID, Team.ENEMY): "v",
     (PieceType.PHOENIX, Team.PLAYER): "H", (PieceType.PHOENIX, Team.ENEMY): "h",
     (PieceType.KING_RAT, Team.PLAYER): "Z", (PieceType.KING_RAT, Team.ENEMY): "z",
+    # --- Expansion pieces ---
+    (PieceType.ASSASSIN, Team.PLAYER): "As", (PieceType.ASSASSIN, Team.ENEMY): "as",
+    (PieceType.BERSERKER_PIECE, Team.PLAYER): "Bk", (PieceType.BERSERKER_PIECE, Team.ENEMY): "bk",
+    (PieceType.CANNON, Team.PLAYER): "Cn", (PieceType.CANNON, Team.ENEMY): "cn",
+    (PieceType.LANCER, Team.PLAYER): "Ln", (PieceType.LANCER, Team.ENEMY): "ln",
+    (PieceType.DUELIST, Team.PLAYER): "Du", (PieceType.DUELIST, Team.ENEMY): "du",
+    (PieceType.REAPER, Team.PLAYER): "Rp", (PieceType.REAPER, Team.ENEMY): "rp",
+    (PieceType.WYVERN, Team.PLAYER): "Wy", (PieceType.WYVERN, Team.ENEMY): "wy",
+    (PieceType.CHARGER, Team.PLAYER): "Ch", (PieceType.CHARGER, Team.ENEMY): "ch",
+    (PieceType.SENTINEL, Team.PLAYER): "Sn", (PieceType.SENTINEL, Team.ENEMY): "sn",
+    (PieceType.HEALER, Team.PLAYER): "He", (PieceType.HEALER, Team.ENEMY): "he",
+    (PieceType.BARD, Team.PLAYER): "Bd", (PieceType.BARD, Team.ENEMY): "bd",
+    (PieceType.WALL, Team.PLAYER): "Wl", (PieceType.WALL, Team.ENEMY): "wl",
+    (PieceType.TOTEM, Team.PLAYER): "To", (PieceType.TOTEM, Team.ENEMY): "to",
+    (PieceType.DECOY, Team.PLAYER): "Dc", (PieceType.DECOY, Team.ENEMY): "dc",
+    (PieceType.SHAPESHIFTER, Team.PLAYER): "Sh", (PieceType.SHAPESHIFTER, Team.ENEMY): "sh",
+    (PieceType.TIME_MAGE, Team.PLAYER): "Tm", (PieceType.TIME_MAGE, Team.ENEMY): "tm",
+    (PieceType.IMP, Team.PLAYER): "Im", (PieceType.IMP, Team.ENEMY): "im",
+    (PieceType.POLTERGEIST, Team.PLAYER): "Po", (PieceType.POLTERGEIST, Team.ENEMY): "po",
+    (PieceType.ALCHEMIST_PIECE, Team.PLAYER): "Al", (PieceType.ALCHEMIST_PIECE, Team.ENEMY): "al",
+    (PieceType.GOLEM, Team.PLAYER): "Go", (PieceType.GOLEM, Team.ENEMY): "go",
+    (PieceType.WITCH, Team.PLAYER): "Wi", (PieceType.WITCH, Team.ENEMY): "wi",
+    (PieceType.TRICKSTER, Team.PLAYER): "Tr", (PieceType.TRICKSTER, Team.ENEMY): "tr",
 }
 
 # Piece value for scoring/AI
@@ -124,6 +215,29 @@ PIECE_VALUES = {
     PieceType.VOID: 5,
     PieceType.PHOENIX: 5,
     PieceType.KING_RAT: 2,
+    # --- Expansion pieces ---
+    PieceType.ASSASSIN: 4,
+    PieceType.BERSERKER_PIECE: 4,
+    PieceType.CANNON: 4,
+    PieceType.LANCER: 3,
+    PieceType.DUELIST: 3,
+    PieceType.REAPER: 4,
+    PieceType.WYVERN: 4,
+    PieceType.CHARGER: 3,
+    PieceType.SENTINEL: 5,
+    PieceType.HEALER: 3,
+    PieceType.BARD: 3,
+    PieceType.WALL: 3,
+    PieceType.TOTEM: 3,
+    PieceType.DECOY: 1,
+    PieceType.SHAPESHIFTER: 3,
+    PieceType.TIME_MAGE: 4,
+    PieceType.IMP: 2,
+    PieceType.POLTERGEIST: 2,
+    PieceType.ALCHEMIST_PIECE: 3,
+    PieceType.GOLEM: 5,
+    PieceType.WITCH: 4,
+    PieceType.TRICKSTER: 2,
 }
 
 # (max_hp, attack) per piece type
@@ -135,6 +249,18 @@ PIECE_STATS: dict[PieceType, tuple[int, int]] = {
     PieceType.ANCHOR_PIECE: (20, 0), PieceType.PARASITE: (4, 0),
     PieceType.MIRROR_PIECE: (5, 3), PieceType.VOID: (8, 4),
     PieceType.PHOENIX: (6, 4), PieceType.KING_RAT: (4, 2),
+    # --- Expansion pieces ---
+    PieceType.ASSASSIN: (3, 8), PieceType.BERSERKER_PIECE: (10, 2),
+    PieceType.CANNON: (8, 6), PieceType.LANCER: (5, 5),
+    PieceType.DUELIST: (7, 4), PieceType.REAPER: (4, 3),
+    PieceType.WYVERN: (6, 5), PieceType.CHARGER: (8, 3),
+    PieceType.SENTINEL: (15, 1), PieceType.HEALER: (5, 0),
+    PieceType.BARD: (4, 2), PieceType.WALL: (25, 0),
+    PieceType.TOTEM: (8, 0), PieceType.DECOY: (1, 0),
+    PieceType.SHAPESHIFTER: (5, 3), PieceType.TIME_MAGE: (4, 2),
+    PieceType.IMP: (2, 1), PieceType.POLTERGEIST: (3, 2),
+    PieceType.ALCHEMIST_PIECE: (5, 1), PieceType.GOLEM: (20, 7),
+    PieceType.WITCH: (4, 0), PieceType.TRICKSTER: (3, 3),
 }
 
 # Player-facing descriptions for tooltips
@@ -211,6 +337,95 @@ PIECE_INFO: dict[PieceType, dict[str, str | None]] = {
         "move": "Range grows with more rats",
         "ability": "Swarm — more rats, more power",
     },
+    # --- Expansion pieces ---
+    PieceType.ASSASSIN: {
+        "move": "Leaps in an L-shape",
+        "ability": "Triple damage to full-HP targets. Dies after 2 captures.",
+    },
+    PieceType.BERSERKER_PIECE: {
+        "move": "Moves one square any direction",
+        "ability": "Gains +1 ATK each time it takes damage. ATK resets on kill.",
+    },
+    PieceType.CANNON: {
+        "move": "Cannot move",
+        "ability": "Attacks nearest enemy in any straight line (range 8).",
+    },
+    PieceType.LANCER: {
+        "move": "Slides in straight lines",
+        "ability": "Damage scales with distance moved: +1 per square.",
+    },
+    PieceType.DUELIST: {
+        "move": "Moves one square any direction",
+        "ability": "Both pieces deal ATK simultaneously. Survives if HP > 0.",
+    },
+    PieceType.REAPER: {
+        "move": "Slides diagonally",
+        "ability": "Executes enemies below 25% HP regardless of ATK.",
+    },
+    PieceType.WYVERN: {
+        "move": "Knight L-shape + diagonal slide",
+        "ability": "Ignores ground-based cell and border modifiers.",
+    },
+    PieceType.CHARGER: {
+        "move": "Straight lines (min 2 squares)",
+        "ability": "+2 ATK for each square moved.",
+    },
+    PieceType.SENTINEL: {
+        "move": "Moves one square any direction",
+        "ability": "Adjacent friendlies take 50% damage (Sentinel absorbs rest).",
+    },
+    PieceType.HEALER: {
+        "move": "Slides diagonally",
+        "ability": "Heals target friendly for 3 HP instead of attacking.",
+    },
+    PieceType.BARD: {
+        "move": "Moves one square any direction",
+        "ability": "Adjacent friendlies gain +2 ATK. Removed when Bard moves/dies.",
+    },
+    PieceType.WALL: {
+        "move": "Cannot move",
+        "ability": "Blocks all movement. Takes -3 from all sources.",
+    },
+    PieceType.TOTEM: {
+        "move": "Cannot move",
+        "ability": "Friendly pieces within 2 cells regenerate 1 HP/turn.",
+    },
+    PieceType.DECOY: {
+        "move": "Cannot move",
+        "ability": "Enemies prioritize Decoy. Spawns 2 Pawns on death.",
+    },
+    PieceType.SHAPESHIFTER: {
+        "move": "Moves one square any direction",
+        "ability": "Changes piece type each turn (cycles roster types).",
+    },
+    PieceType.TIME_MAGE: {
+        "move": "Moves one square any direction",
+        "ability": "On death, rewinds board state by 1 turn (one-time).",
+    },
+    PieceType.IMP: {
+        "move": "Teleports to any empty cell",
+        "ability": "After moving, swaps 2 random enemy positions.",
+    },
+    PieceType.POLTERGEIST: {
+        "move": "Teleports to any empty cell",
+        "ability": "On death, shuffles all remaining enemy positions.",
+    },
+    PieceType.ALCHEMIST_PIECE: {
+        "move": "Moves one square any direction",
+        "ability": "Converts current cell into a random cell modifier each turn.",
+    },
+    PieceType.GOLEM: {
+        "move": "Moves one square any direction",
+        "ability": "Loses 1 max HP permanently each turn. Cannot be healed.",
+    },
+    PieceType.WITCH: {
+        "move": "Slides diagonally",
+        "ability": "Curses target: -2 ATK and -2 HP/turn for 3 turns.",
+    },
+    PieceType.TRICKSTER: {
+        "move": "Leaps in an L-shape",
+        "ability": "After attacking, teleports to a random empty cell.",
+    },
 }
 
 
@@ -238,6 +453,7 @@ class Piece:
     max_hp: int = 0
     attack: int = 0
     ability_flags: dict = field(default_factory=dict)
+    status_effects: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.hp == 0 and self.piece_type in PIECE_STATS:
@@ -383,6 +599,84 @@ class Piece:
         elif self.piece_type == PieceType.KING_RAT:
             # King-style with extended range based on other living king rats
             # (range handled in get_valid_moves via board reference)
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0:
+                        continue
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < board_w and 0 <= ny < board_h:
+                        moves.append((nx, ny))
+
+        # --- Expansion pieces ---
+
+        # Immobile pieces
+        elif self.piece_type in (PieceType.CANNON, PieceType.WALL, PieceType.TOTEM, PieceType.DECOY):
+            pass  # Cannot move
+
+        # Knight L-shape: Assassin, Trickster
+        elif self.piece_type in (PieceType.ASSASSIN, PieceType.TRICKSTER):
+            for dx, dy in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < board_w and 0 <= ny < board_h:
+                    moves.append((nx, ny))
+
+        # Wyvern: Knight L-shape + diagonal slide
+        elif self.piece_type == PieceType.WYVERN:
+            for dx, dy in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < board_w and 0 <= ny < board_h:
+                    moves.append((nx, ny))
+            for dx, dy in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+                for dist in range(1, max(board_w, board_h)):
+                    nx, ny = x + dx * dist, y + dy * dist
+                    if 0 <= nx < board_w and 0 <= ny < board_h:
+                        moves.append((nx, ny))
+                    else:
+                        break
+
+        # Rook straight: Lancer, Charger
+        elif self.piece_type in (PieceType.LANCER, PieceType.CHARGER):
+            for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+                for dist in range(1, max(board_w, board_h)):
+                    nx, ny = x + dx * dist, y + dy * dist
+                    if 0 <= nx < board_w and 0 <= ny < board_h:
+                        moves.append((nx, ny))
+                    else:
+                        break
+
+        # Bishop diagonal: Healer, Witch, Reaper
+        elif self.piece_type in (PieceType.HEALER, PieceType.WITCH, PieceType.REAPER):
+            for dx, dy in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+                for dist in range(1, max(board_w, board_h)):
+                    nx, ny = x + dx * dist, y + dy * dist
+                    if 0 <= nx < board_w and 0 <= ny < board_h:
+                        moves.append((nx, ny))
+                    else:
+                        break
+
+        # Queen-style: Golem
+        elif self.piece_type == PieceType.GOLEM:
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0:
+                        continue
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < board_w and 0 <= ny < board_h:
+                        moves.append((nx, ny))
+
+        # Teleport anywhere: Imp, Poltergeist
+        elif self.piece_type in (PieceType.IMP, PieceType.POLTERGEIST):
+            for gx in range(board_w):
+                for gy in range(board_h):
+                    if gx != x or gy != y:
+                        moves.append((gx, gy))
+
+        # King-style (1 square any): Berserker, Sentinel, Bard, Alchemist, Shapeshifter, Time Mage, Duelist
+        elif self.piece_type in (
+            PieceType.BERSERKER_PIECE, PieceType.SENTINEL, PieceType.BARD,
+            PieceType.ALCHEMIST_PIECE, PieceType.SHAPESHIFTER, PieceType.TIME_MAGE,
+            PieceType.DUELIST,
+        ):
             for dx in [-1, 0, 1]:
                 for dy in [-1, 0, 1]:
                     if dx == 0 and dy == 0:
@@ -600,6 +894,133 @@ class Piece:
                         if not target or target.team != self.team:
                             valid.append((nx, ny))
 
+        # --- Expansion pieces ---
+
+        # Immobile pieces
+        elif self.piece_type in (PieceType.CANNON, PieceType.WALL, PieceType.TOTEM, PieceType.DECOY):
+            pass  # Cannot move
+
+        # Knight L-shape: Assassin, Trickster
+        elif self.piece_type in (PieceType.ASSASSIN, PieceType.TRICKSTER):
+            for dx, dy in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+                nx, ny = x + dx, y + dy
+                if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                    target = board.get_piece_at(nx, ny)
+                    if not target or target.team != self.team:
+                        valid.append((nx, ny))
+
+        # Wyvern: Knight L-shape + diagonal slide
+        elif self.piece_type == PieceType.WYVERN:
+            for dx, dy in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+                nx, ny = x + dx, y + dy
+                if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                    target = board.get_piece_at(nx, ny)
+                    if not target or target.team != self.team:
+                        valid.append((nx, ny))
+            # Diagonal slide
+            for dx, dy in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+                for dist in range(1, max(board.width, board.height)):
+                    nx, ny = x + dx * dist, y + dy * dist
+                    if not board.in_bounds(nx, ny) or board.is_blocked(nx, ny):
+                        break
+                    target = board.get_piece_at(nx, ny)
+                    if target:
+                        if target.team != self.team:
+                            valid.append((nx, ny))
+                        break
+                    valid.append((nx, ny))
+
+        # Rook-style sliders: Lancer, Charger
+        elif self.piece_type in (PieceType.LANCER, PieceType.CHARGER):
+            has_piercing = any(m.effect == "piercing" for m in self.modifiers)
+            for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+                skipped = False
+                for dist in range(1, max(board.width, board.height)):
+                    nx, ny = x + dx * dist, y + dy * dist
+                    if not board.in_bounds(nx, ny) or board.is_blocked(nx, ny):
+                        break
+                    # Charger: must move at least 2 squares
+                    if self.piece_type == PieceType.CHARGER and dist < 2:
+                        target = board.get_piece_at(nx, ny)
+                        if target:
+                            if has_piercing and not skipped:
+                                skipped = True
+                                continue
+                            break
+                        continue  # skip distance 1, don't add to valid
+                    target = board.get_piece_at(nx, ny)
+                    if target:
+                        if target.team == self.team:
+                            if has_piercing and not skipped:
+                                skipped = True
+                                continue
+                            break
+                        else:
+                            valid.append((nx, ny))
+                            if has_piercing and not skipped:
+                                skipped = True
+                                continue
+                            break
+                    valid.append((nx, ny))
+
+        # Bishop-style sliders: Healer, Witch, Reaper
+        elif self.piece_type in (PieceType.HEALER, PieceType.WITCH, PieceType.REAPER):
+            has_piercing = any(m.effect == "piercing" for m in self.modifiers)
+            for dx, dy in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+                skipped = False
+                for dist in range(1, max(board.width, board.height)):
+                    nx, ny = x + dx * dist, y + dy * dist
+                    if not board.in_bounds(nx, ny) or board.is_blocked(nx, ny):
+                        break
+                    target = board.get_piece_at(nx, ny)
+                    if target:
+                        if target.team == self.team:
+                            # Healer can target friendlies
+                            if self.piece_type == PieceType.HEALER:
+                                valid.append((nx, ny))
+                            if has_piercing and not skipped:
+                                skipped = True
+                                continue
+                            break
+                        else:
+                            valid.append((nx, ny))
+                            if has_piercing and not skipped:
+                                skipped = True
+                                continue
+                            break
+                    valid.append((nx, ny))
+
+        # King-style: Golem, Berserker, Sentinel, Bard, Alchemist, Shapeshifter, Time Mage, Duelist
+        elif self.piece_type in (
+            PieceType.GOLEM, PieceType.BERSERKER_PIECE, PieceType.SENTINEL,
+            PieceType.BARD, PieceType.ALCHEMIST_PIECE, PieceType.SHAPESHIFTER,
+            PieceType.TIME_MAGE, PieceType.DUELIST,
+        ):
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0:
+                        continue
+                    nx, ny = x + dx, y + dy
+                    if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                        target = board.get_piece_at(nx, ny)
+                        if not target or target.team != self.team:
+                            valid.append((nx, ny))
+
+        # Teleport anywhere: Imp (empty cells only), Poltergeist (empty cells only)
+        elif self.piece_type in (PieceType.IMP, PieceType.POLTERGEIST):
+            for gx in range(board.width):
+                for gy in range(board.height):
+                    if gx == x and gy == y:
+                        continue
+                    if not board.in_bounds(gx, gy) or board.is_blocked(gx, gy):
+                        continue
+                    if board.is_empty(gx, gy):
+                        valid.append((gx, gy))
+
+        # Ethereal modifier: allow passing through all pieces (re-calculate for sliders)
+        # This is handled by the ghost-style logic if the piece has ethereal
+        # For now, the standard movement already handles most cases via piercing/phase
+
         # Swift modifier: king-style moves in addition to normal moves
         has_extra_move = any(m.effect == "swift" for m in self.modifiers)
         # Haste cell modifier: same as swift but temporary
@@ -642,6 +1063,7 @@ class Piece:
             max_hp=self.max_hp,
             attack=self.attack,
             ability_flags=dict(self.ability_flags),
+            status_effects=[dict(se) for se in self.status_effects],
         )
         if self.cell_modifier and hasattr(self.cell_modifier, 'copy'):
             p.cell_modifier = self.cell_modifier.copy()
@@ -657,4 +1079,20 @@ MODIFIERS = {
     "swift": Modifier("Swift", "Can also move one square in any direction", "swift"),
     "piercing": Modifier("Piercing", "Sliding pieces can attack through one piece", "piercing"),
     "royal": Modifier("Royal", "Worth double points when scoring", "royal"),
+    # --- Expansion modifiers ---
+    "vampiric": Modifier("Vampiric", "On capture, heals for 50% of damage dealt", "vampiric"),
+    "explosive": Modifier("Explosive", "On death, deals 5 damage in 3x3", "explosive"),
+    "frozen": Modifier("Frozen", "Attacks apply Chill: target skips next move", "frozen"),
+    "toxic": Modifier("Toxic", "On hit, applies 1 poison/turn for 3 turns", "toxic"),
+    "ethereal": Modifier("Ethereal", "Can move through all pieces", "ethereal"),
+    "thorned": Modifier("Thorned", "Attackers take 3 retaliation damage", "thorned"),
+    "lucky": Modifier("Lucky", "20% chance to dodge attacks", "lucky"),
+    "magnetic": Modifier("Magnetic", "Pulls nearest enemy 1 cell closer at turn start", "magnetic"),
+    "splitting": Modifier("Splitting", "On death, spawns 2 Pawns with this piece's mods", "splitting"),
+    "reflective": Modifier("Reflective", "30% of damage taken is reflected to attacker", "reflective"),
+    "gilded": Modifier("Gilded", "Earn +1 gold per capture with this piece", "gilded"),
+    "titan": Modifier("Titan", "+5 HP, +2 ATK, but moves every other turn", "titan"),
+    "unstable": Modifier("Unstable", "+4 ATK but takes 1 self-damage per turn", "unstable"),
+    "haunted": Modifier("Haunted", "On death, becomes Ghost at 50% HP for 2 turns", "haunted"),
+    "blazing": Modifier("Blazing", "Leaves fire trail: 1 damage to enemies entering", "blazing"),
 }

@@ -1,7 +1,9 @@
 /* Menu bridge logic — pywebview JS API integration */
 
 let focusIndex = 0;
-let currentPhase = 'main'; // 'main', 'difficulty', 'settings', 'chessticon'
+let currentPhase = 'main'; // 'main', 'difficulty', 'master', 'settings', 'chessticon'
+let pendingAction = ''; // 'tournament' or 'free_play'
+let pendingDifficulty = 'basic';
 
 // Settings state
 let menuBattleSpeed = 400;
@@ -20,6 +22,12 @@ function getVisibleCards() {
     const cards = Array.from(document.querySelectorAll('#difficulty-menu .difficulty-card'));
     const back = document.getElementById('btn-back');
     // Only include non-locked cards
+    const visible = cards.filter(c => !c.classList.contains('locked'));
+    visible.push(back);
+    return visible;
+  } else if (currentPhase === 'master') {
+    const cards = Array.from(document.querySelectorAll('#master-cards .master-card'));
+    const back = document.getElementById('btn-master-back');
     const visible = cards.filter(c => !c.classList.contains('locked'));
     visible.push(back);
     return visible;
@@ -51,9 +59,71 @@ function showMainMenu() {
   currentPhase = 'main';
   focusIndex = 0;
   document.getElementById('difficulty-menu').classList.remove('active');
+  document.getElementById('master-menu').classList.remove('active');
   document.getElementById('main-menu').classList.add('active');
   document.getElementById('settings-overlay').className = 'overlay-hidden';
   document.getElementById('chessticon-overlay').className = 'overlay-hidden';
+  document.getElementById('achievements-overlay').className = 'overlay-hidden';
+  updateFocus();
+}
+
+async function showMasterSelect(action, difficulty) {
+  pendingAction = action;
+  pendingDifficulty = difficulty || 'basic';
+  currentPhase = 'master';
+  focusIndex = 0;
+
+  // Hide other phases
+  document.getElementById('main-menu').classList.remove('active');
+  document.getElementById('difficulty-menu').classList.remove('active');
+  document.getElementById('master-menu').classList.add('active');
+
+  // Load masters from backend
+  try {
+    const masters = await pywebview.api.get_masters();
+    renderMasterCards(masters);
+  } catch (e) {
+    console.error('Failed to load masters:', e);
+  }
+  updateFocus();
+}
+
+function renderMasterCards(masters) {
+  const container = document.getElementById('master-cards');
+  container.innerHTML = '';
+  for (const m of masters) {
+    const card = document.createElement('button');
+    card.className = 'master-card' + (m.unlocked ? '' : ' locked') + (m.selected ? ' selected' : '');
+    const [r, g, b] = m.color;
+    card.innerHTML = `
+      <div class="master-icon" style="color: rgb(${r},${g},${b})">${m.icon}</div>
+      <div class="master-info">
+        <div class="master-name" style="color: rgb(${r},${g},${b})">${m.name}</div>
+        <div class="master-desc">${m.description}</div>
+        <div class="master-passive">&#9650; ${m.passive}</div>
+        <div class="master-drawback">&#9660; ${m.drawback}</div>
+      </div>
+      ${m.unlocked ? '' : '<span class="lock-overlay">&#128274;</span>'}
+    `;
+    card.addEventListener('click', async () => {
+      if (!m.unlocked) return;
+      await pywebview.api.select_master(m.key);
+      pywebview.api.start_game(pendingAction, pendingDifficulty);
+    });
+    container.appendChild(card);
+  }
+}
+
+function showMasterBack() {
+  document.getElementById('master-menu').classList.remove('active');
+  if (pendingAction === 'tournament') {
+    currentPhase = 'difficulty';
+    document.getElementById('difficulty-menu').classList.add('active');
+  } else {
+    currentPhase = 'main';
+    document.getElementById('main-menu').classList.add('active');
+  }
+  focusIndex = 0;
   updateFocus();
 }
 
@@ -87,6 +157,90 @@ function updateMenuParticlesToggle() {
   if (!btn) return;
   btn.textContent = menuParticlesEnabled ? 'ON' : 'OFF';
   btn.className = 'toggle-btn' + (menuParticlesEnabled ? '' : ' off');
+}
+
+// === Achievements overlay ===
+let _achievementsData = null;
+let _achievementProgress = null;
+let _currentAchTab = 'all';
+
+async function openMenuAchievements() {
+  currentPhase = 'achievements';
+  document.getElementById('achievements-overlay').className = 'overlay-visible';
+  try {
+    const [achData, progress] = await Promise.all([
+      pywebview.api.get_achievements(),
+      pywebview.api.get_achievement_progress(),
+    ]);
+    _achievementsData = achData;
+    _achievementProgress = {};
+    for (const p of progress) {
+      _achievementProgress[p.key] = p;
+    }
+    document.getElementById('ach-counter').textContent =
+      achData.unlocked_count + ' / ' + achData.total_count;
+    renderAchievementsTab(_currentAchTab);
+  } catch (e) {
+    console.error('Failed to load achievements:', e);
+  }
+}
+
+function closeMenuAchievements() {
+  document.getElementById('achievements-overlay').className = 'overlay-hidden';
+  currentPhase = 'main';
+  updateFocus();
+}
+
+function renderAchievementsTab(tab) {
+  const container = document.getElementById('achievements-grid');
+  if (!container || !_achievementsData) return;
+  container.innerHTML = '';
+  _currentAchTab = tab;
+
+  const achievements = _achievementsData.achievements || [];
+  const filtered = tab === 'all'
+    ? achievements
+    : achievements.filter(a => a.category === tab);
+
+  for (const ach of filtered) {
+    const card = document.createElement('div');
+    card.className = 'achievement-card';
+    if (ach.earned) card.classList.add('earned');
+    else if (ach.hidden && !ach.earned) card.classList.add('locked');
+
+    // Build reward text
+    let rewardHtml = '';
+    if (ach.unlocks && ach.unlocks.length > 0) {
+      const u = ach.unlocks[0];
+      rewardHtml = '<span class="ach-reward">Unlocks: ' + escMenu(u.type) + ' — ' + escMenu(u.key) + '</span>';
+    }
+
+    // Progress bar for stat-based achievements
+    let progressHtml = '';
+    const prog = _achievementProgress[ach.key];
+    if (prog && !ach.earned) {
+      const pct = prog.target > 0 ? Math.min(100, (prog.current / prog.target) * 100) : 0;
+      progressHtml =
+        '<div class="ach-progress"><div class="ach-progress-fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="ach-progress-text">' + prog.current + ' / ' + prog.target + '</span>';
+    }
+
+    card.innerHTML =
+      '<span class="ach-icon">' + escMenu(ach.icon) + '</span>' +
+      '<span class="ach-name">' + escMenu(ach.name) + '</span>' +
+      '<span class="ach-desc">' + escMenu(ach.description) + '</span>' +
+      rewardHtml +
+      progressHtml;
+
+    container.appendChild(card);
+  }
+}
+
+function escMenu(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 // === Chessticon overlay ===
@@ -135,6 +289,12 @@ function populateMenu(data) {
     gmBtn.classList.remove('locked');
   }
 
+  // Achievement count
+  const achDesc = document.getElementById('achievement-desc');
+  if (achDesc) {
+    achDesc.textContent = (data.achievement_count || 0) + ' / ' + (data.achievement_total || 0) + ' unlocked';
+  }
+
   // Load settings
   if (data.settings) {
     menuBattleSpeed = data.settings.battle_speed || 400;
@@ -153,9 +313,11 @@ document.querySelectorAll('#main-menu .menu-card').forEach(card => {
     } else if (action === 'continue') {
       pywebview.api.start_game('continue');
     } else if (action === 'free_play') {
-      pywebview.api.start_game('free_play');
+      showMasterSelect('free_play');
     } else if (action === 'elo_shop') {
       pywebview.api.start_game('elo_shop');
+    } else if (action === 'achievements') {
+      openMenuAchievements();
     } else if (action === 'chessticon') {
       openMenuChessticon();
     } else if (action === 'settings') {
@@ -168,7 +330,7 @@ document.querySelectorAll('#difficulty-menu .difficulty-card').forEach(card => {
   card.addEventListener('click', () => {
     if (card.classList.contains('locked')) return;
     const diff = card.dataset.difficulty;
-    pywebview.api.start_game('tournament', diff);
+    showMasterSelect('tournament', diff);
   });
 });
 
@@ -178,6 +340,10 @@ document.getElementById('btn-quit').addEventListener('click', () => {
 
 document.getElementById('btn-back').addEventListener('click', () => {
   showMainMenu();
+});
+
+document.getElementById('btn-master-back').addEventListener('click', () => {
+  showMasterBack();
 });
 
 // === Settings overlay controls ===
@@ -217,6 +383,19 @@ document.getElementById('menu-settings-back').addEventListener('click', () => {
   closeMenuSettings();
 });
 
+// === Achievements overlay controls ===
+document.querySelectorAll('#ach-tabs .achievement-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('#ach-tabs .achievement-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    renderAchievementsTab(tab.dataset.achTab);
+  });
+});
+
+document.getElementById('menu-ach-back').addEventListener('click', () => {
+  closeMenuAchievements();
+});
+
 // === Chessticon overlay controls ===
 document.querySelectorAll('#chessticon-overlay .chessticon-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -235,12 +414,20 @@ document.addEventListener('keydown', (e) => {
   // Handle overlay ESC
   if (e.key === 'Escape') {
     e.preventDefault();
+    if (currentPhase === 'achievements') {
+      closeMenuAchievements();
+      return;
+    }
     if (currentPhase === 'chessticon') {
       closeMenuChessticon();
       return;
     }
     if (currentPhase === 'settings') {
       closeMenuSettings();
+      return;
+    }
+    if (currentPhase === 'master') {
+      showMasterBack();
       return;
     }
     if (currentPhase === 'difficulty') {
@@ -252,7 +439,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Block card nav when in overlay
-  if (currentPhase === 'settings' || currentPhase === 'chessticon') return;
+  if (currentPhase === 'settings' || currentPhase === 'chessticon' || currentPhase === 'achievements') return;
 
   const cards = getVisibleCards();
   if (cards.length === 0) return;

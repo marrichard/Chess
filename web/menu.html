@@ -45,6 +45,11 @@
         <span class="card-title">ELO Shop</span>
         <span class="card-desc">Spend ELO on permanent unlocks</span>
       </button>
+      <button class="menu-card" data-action="achievements">
+        <span class="card-icon">&#9733;</span>
+        <span class="card-title">Achievements</span>
+        <span class="card-desc" id="achievement-desc">0 / 0 unlocked</span>
+      </button>
       <button class="menu-card" data-action="chessticon">
         <span class="card-icon">&#9823;</span>
         <span class="card-title">Chessticon</span>
@@ -95,6 +100,13 @@
     <button class="back-btn" id="btn-back">&#9664; Back</button>
   </div>
 
+  <!-- Phase 3: Master Selection -->
+  <div id="master-menu" class="phase">
+    <h2>Choose Your Master</h2>
+    <div id="master-cards" class="master-grid"></div>
+    <button class="back-btn" id="btn-master-back">&#9664; Back</button>
+  </div>
+
   <!-- Settings overlay -->
   <div id="settings-overlay" class="overlay-hidden">
     <div class="options-backdrop"></div>
@@ -118,6 +130,26 @@
     </div>
   </div>
 
+  <!-- Achievements overlay -->
+  <div id="achievements-overlay" class="overlay-hidden">
+    <div class="options-backdrop"></div>
+    <div class="achievements-panel">
+      <h2>Achievements</h2>
+      <div class="achievement-counter" id="ach-counter">0 / 0</div>
+      <div class="achievement-tabs" id="ach-tabs">
+        <button class="achievement-tab active" data-ach-tab="all">All</button>
+        <button class="achievement-tab" data-ach-tab="milestone">Milestone</button>
+        <button class="achievement-tab" data-ach-tab="combat">Combat</button>
+        <button class="achievement-tab" data-ach-tab="economy">Economy</button>
+        <button class="achievement-tab" data-ach-tab="discovery">Discovery</button>
+        <button class="achievement-tab" data-ach-tab="challenge">Challenge</button>
+        <button class="achievement-tab" data-ach-tab="hidden">Hidden</button>
+      </div>
+      <div id="achievements-grid" class="achievements-grid"></div>
+      <button class="options-btn" id="menu-ach-back">Back</button>
+    </div>
+  </div>
+
   <!-- Chessticon codex overlay -->
   <div id="chessticon-overlay" class="overlay-hidden">
     <div class="options-backdrop"></div>
@@ -129,6 +161,7 @@
         <button class="chessticon-tab" data-tab="tarots">Tarots</button>
         <button class="chessticon-tab" data-tab="artifacts">Artifacts</button>
         <button class="chessticon-tab" data-tab="synergies">Synergies</button>
+        <button class="chessticon-tab" data-tab="masters">Masters</button>
       </div>
       <div id="chessticon-content" class="codex-grid"></div>
       <button class="options-btn" id="menu-codex-back">Back</button>

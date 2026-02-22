@@ -56,6 +56,14 @@ body {
   pointer-events: auto;
 }
 
+/* === Rarity Colors === */
+:root {
+  --rarity-common: rgb(180, 180, 180);
+  --rarity-rare: rgb(80, 140, 255);
+  --rarity-epic: rgb(180, 60, 255);
+  --rarity-legendary: rgb(255, 200, 50);
+}
+
 /* === Colors === */
 .gold { color: #ffd700; text-shadow: 0 0 8px rgba(255, 215, 0, 0.3); }
 .purple { color: #b48eff; }
@@ -152,6 +160,7 @@ body {
 
 /* --- Board container --- */
 #board-container, #placement-board-container {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -299,6 +308,128 @@ body {
 @keyframes royalPulse {
   from { filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.6)); }
   to   { filter: drop-shadow(0 0 12px rgba(255, 215, 0, 1.0)); }
+}
+
+/* --- Expansion modifier glows --- */
+
+.piece.mod-vampiric {
+  filter: drop-shadow(0 0 6px rgba(180, 30, 30, 0.8));
+  animation: vampiricGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes vampiricGlow {
+  from { filter: drop-shadow(0 0 4px rgba(180, 30, 30, 0.5)); }
+  to   { filter: drop-shadow(0 0 10px rgba(180, 30, 30, 1.0)); }
+}
+
+.piece.mod-explosive {
+  filter: drop-shadow(0 0 6px rgba(255, 80, 0, 0.8));
+  animation: explosiveGlow 1.2s ease-in-out infinite alternate;
+}
+@keyframes explosiveGlow {
+  from { filter: drop-shadow(0 0 4px rgba(255, 80, 0, 0.6)); }
+  to   { filter: drop-shadow(0 0 10px rgba(255, 80, 0, 1.0)); }
+}
+
+.piece.mod-frozen {
+  filter: drop-shadow(0 0 5px rgba(100, 200, 255, 0.7));
+}
+
+.piece.mod-toxic {
+  filter: drop-shadow(0 0 6px rgba(80, 200, 50, 0.7));
+  animation: toxicShimmer 2s ease-in-out infinite alternate;
+}
+@keyframes toxicShimmer {
+  from { filter: drop-shadow(0 0 4px rgba(80, 200, 50, 0.5)); }
+  to   { filter: drop-shadow(0 0 8px rgba(80, 200, 50, 1.0)); }
+}
+
+.piece.mod-ethereal {
+  filter: drop-shadow(0 0 6px rgba(200, 200, 255, 0.7));
+  animation: etherealShimmer 2.5s ease-in-out infinite alternate;
+}
+@keyframes etherealShimmer {
+  from { filter: drop-shadow(0 0 3px rgba(200, 200, 255, 0.4)); opacity: 0.85; }
+  to   { filter: drop-shadow(0 0 8px rgba(200, 200, 255, 1.0)); opacity: 1; }
+}
+
+.piece.mod-thorned {
+  filter: drop-shadow(0 0 4px rgba(200, 50, 50, 0.7));
+}
+
+.piece.mod-lucky {
+  filter: drop-shadow(0 0 6px rgba(255, 220, 100, 0.7));
+  animation: luckyShimmer 2s ease-in-out infinite alternate;
+}
+@keyframes luckyShimmer {
+  from { filter: drop-shadow(0 0 4px rgba(255, 220, 100, 0.5)); }
+  to   { filter: drop-shadow(0 0 8px rgba(255, 220, 100, 1.0)); }
+}
+
+.piece.mod-magnetic {
+  filter: drop-shadow(0 0 6px rgba(150, 100, 255, 0.8));
+  animation: magneticGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes magneticGlow {
+  from { filter: drop-shadow(0 0 4px rgba(150, 100, 255, 0.5)); }
+  to   { filter: drop-shadow(0 0 10px rgba(150, 100, 255, 1.0)); }
+}
+
+.piece.mod-splitting {
+  filter: drop-shadow(0 0 6px rgba(200, 150, 50, 0.8));
+  animation: splittingGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes splittingGlow {
+  from { filter: drop-shadow(0 0 4px rgba(200, 150, 50, 0.5)); }
+  to   { filter: drop-shadow(0 0 10px rgba(200, 150, 50, 1.0)); }
+}
+
+.piece.mod-reflective {
+  filter: drop-shadow(0 0 6px rgba(220, 220, 240, 0.7));
+  animation: reflectiveShimmer 2s ease-in-out infinite alternate;
+}
+@keyframes reflectiveShimmer {
+  from { filter: drop-shadow(0 0 3px rgba(220, 220, 240, 0.5)); }
+  to   { filter: drop-shadow(0 0 8px rgba(220, 220, 240, 1.0)); }
+}
+
+.piece.mod-gilded {
+  filter: drop-shadow(0 0 6px rgba(255, 200, 50, 0.8));
+  animation: gildedGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes gildedGlow {
+  from { filter: drop-shadow(0 0 4px rgba(255, 200, 50, 0.5)); }
+  to   { filter: drop-shadow(0 0 10px rgba(255, 200, 50, 1.0)); }
+}
+
+.piece.mod-titan {
+  filter: drop-shadow(0 0 5px rgba(160, 100, 50, 0.7));
+}
+
+.piece.mod-unstable {
+  filter: drop-shadow(0 0 6px rgba(255, 50, 50, 0.8));
+  animation: unstableGlow 0.8s ease-in-out infinite alternate;
+}
+@keyframes unstableGlow {
+  from { filter: drop-shadow(0 0 4px rgba(255, 50, 50, 0.6)); }
+  to   { filter: drop-shadow(0 0 12px rgba(255, 50, 50, 1.0)); }
+}
+
+.piece.mod-haunted {
+  filter: drop-shadow(0 0 6px rgba(100, 50, 200, 0.7));
+  animation: hauntedShimmer 2s ease-in-out infinite alternate;
+}
+@keyframes hauntedShimmer {
+  from { filter: drop-shadow(0 0 3px rgba(100, 50, 200, 0.4)); opacity: 0.8; }
+  to   { filter: drop-shadow(0 0 8px rgba(100, 50, 200, 1.0)); opacity: 1; }
+}
+
+.piece.mod-blazing {
+  filter: drop-shadow(0 0 6px rgba(255, 150, 30, 0.8));
+  animation: blazingGlow 1s ease-in-out infinite alternate;
+}
+@keyframes blazingGlow {
+  from { filter: drop-shadow(0 0 4px rgba(255, 150, 30, 0.5)); }
+  to   { filter: drop-shadow(0 0 12px rgba(255, 150, 30, 1.0)); }
 }
 
 /* Piece slide animation */
@@ -1020,6 +1151,13 @@ body {
 #tooltip .tt-sep { border-top: 1px solid rgba(180, 142, 255, 0.2); margin: 5px 0; }
 #tooltip .tt-mod { color: #ffa; font-size: 0.7rem; }
 #tooltip .tt-desc { color: #aaa; font-size: 0.7rem; margin-top: 2px; margin-bottom: 2px; }
+#tooltip .tt-rarity { font-size: 0.65rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+#tooltip .tt-rarity.rarity-rare { color: var(--rarity-rare); }
+#tooltip .tt-rarity.rarity-epic { color: var(--rarity-epic); }
+#tooltip .tt-rarity.rarity-legendary { color: var(--rarity-legendary); }
+#tooltip .tt-mod.rarity-rare { color: var(--rarity-rare); }
+#tooltip .tt-mod.rarity-epic { color: var(--rarity-epic); }
+#tooltip .tt-mod.rarity-legendary { color: var(--rarity-legendary); }
 
 /* ================================================================
    ELO CATEGORY HEADERS
@@ -1417,4 +1555,377 @@ body {
 @keyframes enemyTurnPulse {
   from { box-shadow: 0 0 20px rgba(255, 70, 70, 0.15), 0 4px 20px rgba(0, 0, 0, 0.4); }
   to   { box-shadow: 0 0 35px rgba(255, 70, 70, 0.35), 0 4px 20px rgba(0, 0, 0, 0.4); }
+}
+
+/* ================================================================
+   RARITY SYSTEM
+   ================================================================ */
+
+/* --- Rarity border glow on shop cards --- */
+.shop-card.rarity-rare {
+  border-color: rgba(80, 140, 255, 0.4);
+}
+.shop-card.rarity-epic {
+  border-color: rgba(180, 60, 255, 0.4);
+  box-shadow: 0 0 8px rgba(180, 60, 255, 0.15);
+}
+.shop-card.rarity-legendary {
+  border-color: rgba(255, 200, 50, 0.5);
+  box-shadow: 0 0 12px rgba(255, 200, 50, 0.2);
+  animation: legendaryShimmer 2s ease-in-out infinite alternate;
+}
+
+.shop-card.rarity-rare.selected {
+  border-color: var(--rarity-rare);
+  box-shadow: 0 0 16px rgba(80, 140, 255, 0.4);
+}
+.shop-card.rarity-epic.selected {
+  border-color: var(--rarity-epic);
+  box-shadow: 0 0 16px rgba(180, 60, 255, 0.4);
+}
+.shop-card.rarity-legendary.selected {
+  border-color: var(--rarity-legendary);
+  box-shadow: 0 0 20px rgba(255, 200, 50, 0.5);
+}
+
+/* --- Rarity border glow on draft cards --- */
+.draft-card.rarity-rare {
+  border-color: rgba(80, 140, 255, 0.4);
+}
+.draft-card.rarity-epic {
+  border-color: rgba(180, 60, 255, 0.4);
+  box-shadow: 0 0 8px rgba(180, 60, 255, 0.15);
+}
+.draft-card.rarity-legendary {
+  border-color: rgba(255, 200, 50, 0.5);
+  box-shadow: 0 0 12px rgba(255, 200, 50, 0.2);
+  animation: legendaryShimmer 2s ease-in-out infinite alternate;
+}
+
+/* --- Rarity border on roster pieces --- */
+.roster-piece.rarity-rare {
+  border-color: rgba(80, 140, 255, 0.35);
+}
+.roster-piece.rarity-epic {
+  border-color: rgba(180, 60, 255, 0.35);
+}
+.roster-piece.rarity-legendary {
+  border-color: rgba(255, 200, 50, 0.4);
+  box-shadow: 0 0 6px rgba(255, 200, 50, 0.15);
+}
+
+/* --- Rarity label badge --- */
+.rarity-badge {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1;
+  font-weight: 700;
+}
+.rarity-badge.common    { color: #aaa; }
+.rarity-badge.rare      { color: var(--rarity-rare); }
+.rarity-badge.epic      { color: var(--rarity-epic); }
+.rarity-badge.legendary { color: var(--rarity-legendary); text-shadow: 0 0 6px rgba(255, 200, 50, 0.4); }
+
+/* --- Sell item styling --- */
+.shop-card.sell-item {
+  border-color: rgba(255, 100, 100, 0.3);
+  background: rgba(40, 15, 15, 0.85);
+}
+.shop-card.sell-item .shop-card-cost {
+  color: #66ff88;
+}
+
+/* --- Legendary shimmer animation --- */
+@keyframes legendaryShimmer {
+  0%   { box-shadow: 0 0 8px rgba(255, 200, 50, 0.15); }
+  50%  { box-shadow: 0 0 16px rgba(255, 200, 50, 0.35); }
+  100% { box-shadow: 0 0 8px rgba(255, 200, 50, 0.15); }
+}
+
+/* ================================================================
+   ACHIEVEMENT TOAST
+   ================================================================ */
+
+.achievement-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-80px);
+  background: rgba(15, 15, 30, 0.95);
+  border: 1px solid rgba(255, 200, 50, 0.6);
+  border-radius: 10px;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 200;
+  box-shadow: 0 4px 24px rgba(255, 200, 50, 0.2), 0 0 40px rgba(255, 200, 50, 0.1);
+  animation: toastSlideIn 400ms ease forwards, toastSlideOut 400ms ease 3.5s forwards;
+  pointer-events: none;
+}
+
+.achievement-toast-icon {
+  font-size: 1.6rem;
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.achievement-toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.achievement-toast-title {
+  font-size: 0.7rem;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.achievement-toast-name {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  font-weight: bold;
+}
+
+.achievement-toast-reward {
+  font-size: 0.7rem;
+  color: #88cc88;
+}
+
+@keyframes toastSlideIn {
+  to { transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastSlideOut {
+  to { transform: translateX(-50%) translateY(-80px); opacity: 0; }
+}
+
+/* ================================================================
+   SVG PIECE RENDERING
+   ================================================================ */
+
+/* Container for SVG pieces on board */
+.piece-svg {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+}
+
+/* Size variants are set inline by pieceRenderer.js */
+.piece-fallback {
+  pointer-events: none;
+}
+
+/* When piece element contains SVG, adjust layout */
+.piece {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ================================================================
+   ATTACK LUNGE ANIMATION
+   ================================================================ */
+
+.piece-attacking {
+  animation: piece-lunge 0.25s ease-out;
+}
+
+@keyframes piece-lunge {
+  0%   { transform: translate(0, 0); }
+  40%  { transform: translate(calc(var(--lunge-x) * 30%), calc(var(--lunge-y) * 30%)); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ================================================================
+   SPAWN POP-IN ANIMATION
+   ================================================================ */
+
+.piece-spawning {
+  animation: piece-spawn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes piece-spawn {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ================================================================
+   DAMAGE FLASH
+   ================================================================ */
+
+.piece-hit {
+  animation: piece-hit-flash 0.15s ease-out;
+}
+
+@keyframes piece-hit-flash {
+  0%   { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+  50%  { filter: brightness(2) drop-shadow(0 0 8px rgba(255, 50, 50, 0.8)); }
+  100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+}
+
+/* ================================================================
+   DEATH ANIMATIONS
+   ================================================================ */
+
+/* Standard death: shrink + fade */
+.piece-dying {
+  animation: piece-death 0.3s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes piece-death {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.3); opacity: 0; }
+}
+
+/* Fire death */
+.piece-dying-fire {
+  animation: piece-death-fire 0.4s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes piece-death-fire {
+  0%   { transform: scale(1) translateY(0); opacity: 1; filter: brightness(1); }
+  40%  { transform: scale(1.1) translateY(-5%); filter: brightness(2) drop-shadow(0 0 12px rgba(255, 100, 30, 0.9)); }
+  100% { transform: scale(0.2) translateY(-40%); opacity: 0; filter: brightness(3); }
+}
+
+/* Poison death */
+.piece-dying-poison {
+  animation: piece-death-poison 0.35s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes piece-death-poison {
+  0%   { transform: scale(1); opacity: 1; filter: hue-rotate(0deg); }
+  50%  { transform: scale(0.9); filter: hue-rotate(90deg) brightness(1.3) drop-shadow(0 0 8px rgba(50, 255, 50, 0.6)); }
+  100% { transform: scale(0.3); opacity: 0; filter: hue-rotate(120deg); }
+}
+
+/* Boss death: bigger, more dramatic */
+.piece-dying-boss {
+  animation: piece-death-boss 0.5s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes piece-death-boss {
+  0%   { transform: scale(1); opacity: 1; }
+  30%  { transform: scale(1.3); filter: brightness(3) drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)); }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+/* ================================================================
+   BOSS ENTRANCE EFFECTS
+   ================================================================ */
+
+.boss-entrance {
+  animation: boss-flash 0.3s ease-out;
+}
+
+@keyframes boss-flash {
+  0%   { filter: brightness(3); }
+  100% { filter: brightness(1); }
+}
+
+#board-container.boss-entrance::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  animation: boss-vignette-in 1s ease-out forwards;
+}
+
+@keyframes boss-vignette-in {
+  0%   { box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.8); }
+  100% { box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.3); }
+}
+
+/* ================================================================
+   SUDDEN DEATH PULSE
+   ================================================================ */
+
+#board-container.sudden-death-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  border-radius: inherit;
+  animation: sudden-death-pulse 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes sudden-death-pulse {
+  0%   { box-shadow: inset 0 0 30px rgba(255, 30, 30, 0.15); }
+  100% { box-shadow: inset 0 0 60px rgba(255, 30, 30, 0.35); }
+}
+
+/* ================================================================
+   LEGENDARY REVEAL ANIMATION
+   ================================================================ */
+
+.legendary-reveal {
+  animation: legendary-bloom 0.6s ease-out;
+}
+
+@keyframes legendary-bloom {
+  0%   { transform: scale(0.95); box-shadow: 0 0 0 rgba(255, 200, 50, 0); }
+  40%  { transform: scale(1.05); box-shadow: 0 0 40px rgba(255, 200, 50, 0.6); }
+  100% { transform: scale(1); box-shadow: 0 0 12px rgba(255, 200, 50, 0.2); }
+}
+
+/* ================================================================
+   SCREEN FLASH OVERLAY
+   ================================================================ */
+
+.screen-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 150;
+  animation: screen-flash-anim 0.3s ease-out forwards;
+}
+
+@keyframes screen-flash-anim {
+  0%   { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+/* ================================================================
+   BATTLE VICTORY SHAKE
+   ================================================================ */
+
+.victory-shake {
+  animation: victory-shake-anim 0.4s ease-out;
+}
+
+@keyframes victory-shake-anim {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-4px, 3px); }
+  20% { transform: translate(4px, -3px); }
+  30% { transform: translate(-3px, 4px); }
+  40% { transform: translate(3px, -2px); }
+  50% { transform: translate(-2px, 3px); }
+  60% { transform: translate(2px, -1px); }
+  70% { transform: translate(-1px, 2px); }
+  80% { transform: translate(1px, -1px); }
+}
+
+/* ================================================================
+   DEATH CONTAINER (for temporary death animation elements)
+   ================================================================ */
+
+.death-ghost {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
 }

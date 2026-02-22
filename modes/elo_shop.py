@@ -9,38 +9,42 @@ import renderer
 import save_data as sd
 
 SHOP_CATALOG = [
-    # Standard Pieces
-    {"key": "rook",     "category": "Piece",    "name": "Rook",          "cost": 200,  "desc": "Unlock Rook for starting roster"},
-    {"key": "queen",    "category": "Piece",    "name": "Queen",         "cost": 500,  "desc": "Unlock Queen for starting roster"},
-    {"key": "king",     "category": "Piece",    "name": "King",          "cost": 1000, "desc": "Unlock King for starting roster"},
-    # New Abstract Pieces
-    {"key": "bomb",         "category": "Piece", "name": "Bomb",         "cost": 150,  "desc": "Explodes on death, 10 dmg in 3x3"},
-    {"key": "mimic",        "category": "Piece", "name": "Mimic",        "cost": 200,  "desc": "Transforms into killer on death"},
-    {"key": "leech",        "category": "Piece", "name": "Leech",        "cost": 200,  "desc": "Heals when dealing damage"},
-    {"key": "summoner",     "category": "Piece", "name": "Summoner",     "cost": 300,  "desc": "Spawns pawns each turn"},
-    {"key": "ghost",        "category": "Piece", "name": "Ghost",        "cost": 250,  "desc": "Passes through all pieces"},
-    {"key": "gambler",      "category": "Piece", "name": "Gambler",      "cost": 200,  "desc": "10 ATK but 50% miss chance"},
-    {"key": "anchor_piece", "category": "Piece", "name": "Anchor",       "cost": 250,  "desc": "20 HP wall, -2 dmg aura"},
-    {"key": "parasite",     "category": "Piece", "name": "Parasite",     "cost": 200,  "desc": "Drains 1 HP from adjacent enemies"},
-    {"key": "mirror_piece", "category": "Piece", "name": "Mirror",       "cost": 300,  "desc": "Reflects ally movements"},
-    {"key": "void",         "category": "Piece", "name": "Void",         "cost": 400,  "desc": "Blocks cells after moving"},
-    {"key": "phoenix",      "category": "Piece", "name": "Phoenix",      "cost": 350,  "desc": "Revives once at 50% HP"},
-    {"key": "king_rat",     "category": "Piece", "name": "King Rat",     "cost": 150,  "desc": "Faster with more rats"},
-    # Modifiers
-    {"key": "piercing", "category": "Modifier", "name": "Piercing",      "cost": 150,  "desc": "Piercing appears in battle shop"},
-    {"key": "royal",    "category": "Modifier", "name": "Royal",         "cost": 300,  "desc": "Royal appears in battle shop"},
-    # Upgrades (repeatable)
+    # --- Upgrades (repeatable) ---
     {"key": "extra_piece", "category": "Upgrade", "name": "+1 Roster Slot", "cost": 400, "desc": "Start with 1 extra piece"},
     {"key": "start_gold",  "category": "Upgrade", "name": "+5 Gold",        "cost": 250, "desc": "Start battles with +5 gold"},
     {"key": "extra_life",  "category": "Upgrade", "name": "+1 Life",        "cost": 800, "desc": "Gain an extra life in tournaments"},
     {"key": "tarot_slot",  "category": "Upgrade", "name": "+1 Tarot Slot",  "cost": 500, "desc": "Hold an additional Tarot card"},
     {"key": "artifact_slot", "category": "Upgrade", "name": "+1 Artifact Slot", "cost": 600, "desc": "Hold an additional Artifact"},
+    # --- Starter Pieces (8) ---
+    {"key": "rook",     "category": "Piece", "name": "Rook",     "cost": 100,  "desc": "Unlock Rook for starting roster"},
+    {"key": "queen",    "category": "Piece", "name": "Queen",    "cost": 150,  "desc": "Unlock Queen for starting roster"},
+    {"key": "king",     "category": "Piece", "name": "King",     "cost": 200,  "desc": "Unlock King for starting roster"},
+    {"key": "bomb",     "category": "Piece", "name": "Bomb",     "cost": 120,  "desc": "Explodes on death, 10 dmg in 3x3"},
+    {"key": "leech",    "category": "Piece", "name": "Leech",    "cost": 100,  "desc": "Heals when dealing damage"},
+    {"key": "cannon",   "category": "Piece", "name": "Cannon",   "cost": 100,  "desc": "Immobile ranged attacker"},
+    {"key": "lancer",   "category": "Piece", "name": "Lancer",   "cost": 100,  "desc": "Damage scales with distance moved"},
+    {"key": "duelist",  "category": "Piece", "name": "Duelist",  "cost": 100,  "desc": "Both deal ATK simultaneously"},
+    # --- Starter Modifiers (5) ---
+    {"key": "flaming",  "category": "Modifier", "name": "Flaming",  "cost": 80,  "desc": "Splash damage on attacks"},
+    {"key": "armored",  "category": "Modifier", "name": "Armored",  "cost": 80,  "desc": "-2 incoming damage"},
+    {"key": "swift",    "category": "Modifier", "name": "Swift",    "cost": 80,  "desc": "+1 move range"},
+    {"key": "piercing", "category": "Modifier", "name": "Piercing", "cost": 100, "desc": "Ignore armor on attacks"},
+    {"key": "royal",    "category": "Modifier", "name": "Royal",    "cost": 120, "desc": "Earn 2x gold on captures"},
+    # --- Convenience Items (3) ---
+    {"key": "loaded_dice",    "category": "Piece", "name": "Loaded Dice",    "cost": 150, "desc": "Reroll shop once per wave for free"},
+    {"key": "scouts_map",     "category": "Piece", "name": "Scout's Map",    "cost": 100, "desc": "See enemy composition during setup"},
+    {"key": "training_dummy", "category": "Piece", "name": "Training Dummy", "cost": 80,  "desc": "Surviving pieces gain +1 HP/wave"},
+    # --- Premium Masters (dual-path: buyable OR achievement) ---
+    {"key": "the_blacksmith",    "category": "Master", "name": "The Blacksmith",  "cost": 200,  "desc": "Modifier master: -2g mod costs"},
+    {"key": "the_alchemist",     "category": "Master", "name": "The Alchemist",   "cost": 250,  "desc": "Cell mod master: doubled effects"},
+    {"key": "the_mirror_master", "category": "Master", "name": "The Mirror",      "cost": 300,  "desc": "Copy master: mirror enemies"},
 ]
 
 CATEGORY_COLORS = {
     "Piece":    (80, 130, 255),
     "Modifier": (255, 180, 60),
     "Upgrade":  (100, 220, 100),
+    "Master":   (200, 100, 255),
 }
 
 
@@ -66,6 +70,8 @@ class EloShop:
             return item["key"] in self.save_data.unlocked_pieces
         elif item["category"] == "Modifier":
             return item["key"] in self.save_data.unlocked_modifiers
+        elif item["category"] == "Master":
+            return item["key"] in self.save_data.unlocked_masters
         return False  # upgrades are always purchasable
 
     def _effective_cost(self, item: dict) -> int:

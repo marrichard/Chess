@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sprite Size Comparison — 24x24 vs 32x32</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Consolas, 'Courier New', monospace;
+      background: #0a0a14;
+      color: #e0e0e0;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    h1 { text-align: center; margin-bottom: 8px; font-size: 1.2rem; color: #b48eff; }
+    .subtitle { text-align: center; color: #888; font-size: 0.8rem; margin-bottom: 20px; }
+
+    .comparison {
+      display: flex;
+      gap: 40px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .panel {
+      background: rgba(20, 20, 40, 0.8);
+      border: 1px solid rgba(180, 142, 255, 0.3);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .panel h2 {
+      text-align: center;
+      font-size: 1rem;
+      margin-bottom: 4px;
+      color: #b48eff;
+    }
+    .panel .info {
+      text-align: center;
+      font-size: 0.7rem;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    /* Mock board */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      border: 2px solid rgba(180, 142, 255, 0.35);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .board.size-24 { width: 416px; height: 208px; }
+    .board.size-32 { width: 416px; height: 208px; }
+
+    .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      aspect-ratio: 1;
+    }
+    .cell.light { background: #8882a8; }
+    .cell.dark { background: #504868; }
+
+    .cell canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Sprite grid (all pieces) */
+    .sprite-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .sprite-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 4px;
+      background: rgba(30, 30, 60, 0.5);
+      border-radius: 4px;
+    }
+    .sprite-cell canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    .sprite-cell .name {
+      font-size: 0.5rem;
+      color: #888;
+      text-align: center;
+      max-width: 60px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      color: #b48eff;
+      margin: 16px 0 8px;
+      text-align: center;
+    }
+
+    .toggle-bar {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .toggle-bar button {
+      padding: 6px 16px;
+      background: rgba(30, 30, 60, 0.8);
+      border: 1px solid rgba(180, 142, 255, 0.3);
+      color: #e0e0e0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+    }
+    .toggle-bar button.active {
+      background: rgba(180, 142, 255, 0.3);
+      border-color: #b48eff;
+    }
+
+    .board-row { display: contents; }
+  </style>
+</head>
+<body>
+  <h1>Sprite Resolution Comparison</h1>
+  <div class="subtitle">SVGs pixelated to 24x24 and 32x32, shown at board scale (52px cells)</div>
+
+  <div class="toggle-bar">
+    <button class="active" onclick="setDisplaySize(52, this)">Game size (52px cells)</button>
+    <button onclick="setDisplaySize(40, this)">Smaller (40px cells)</button>
+    <button onclick="setDisplaySize(64, this)">Larger (64px cells)</button>
+  </div>
+
+  <div class="comparison" id="comparison"></div>
+
+  <script src="pieceSVGs.js"></script>
+  <script src="pieceRenderer.js"></script>
+  <script>
+    // Piece layout for mock board (4 rows x 8 cols)
+    const BOARD_PIECES = [
+      // Row 0: enemy back rank
+      ['rook','knight','bishop','queen','king','bishop','knight','rook'],
+      // Row 1: enemy pawns
+      ['pawn','pawn','pawn','pawn','pawn','pawn','pawn','pawn'],
+      // Row 2: player pawns
+      ['pawn','pawn','pawn','pawn','pawn','pawn','pawn','pawn'],
+      // Row 3: player back rank
+      ['rook','knight','bishop','queen','king','bishop','knight','rook'],
+    ];
+    const BOARD_TEAMS = [
+      ['enemy','enemy','enemy','enemy','enemy','enemy','enemy','enemy'],
+      ['enemy','enemy','enemy','enemy','enemy','enemy','enemy','enemy'],
+      ['player','player','player','player','player','player','player','player'],
+      ['player','player','player','player','player','player','player','player'],
+    ];
+
+    // All 42 piece types
+    const ALL_PIECES = Object.keys(PIECE_SVGS);
+
+    let currentDisplaySize = 52;
+
+    function svgToPixelated(pieceType, team, nativeSize, displaySize) {
+      // Render SVG to a small canvas, then display upscaled with pixelated rendering
+      const svgData = PIECE_SVGS[pieceType];
+      if (!svgData) return null;
+
+      // Create offscreen SVG
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('xmlns', ns);
+      svg.setAttribute('viewBox', svgData.viewBox || '0 0 64 64');
+      svg.setAttribute('width', nativeSize);
+      svg.setAttribute('height', nativeSize);
+
+      const teamColor = team === 'player' ? '#5082ff' : '#ff4646';
+      const accentColor = team === 'player' ? '#3060cc' : '#cc2020';
+      svg.style.color = teamColor;
+
+      for (const pathData of svgData.paths) {
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', pathData.d);
+        if (pathData.stroke || pathData.strokeWidth) {
+          path.setAttribute('fill', (pathData.fill || 'none').replace('currentColor', teamColor).replace('var(--piece-accent, #000)', accentColor).replace('var(--piece-accent, currentColor)', accentColor).replace(/var\(--piece-accent,\s*[^)]+\)/, accentColor));
+          path.setAttribute('stroke', (pathData.stroke || 'currentColor').replace('currentColor', teamColor));
+          path.setAttribute('stroke-width', pathData.strokeWidth || '2');
+          path.setAttribute('stroke-linecap', 'round');
+        } else {
+          let fill = pathData.fill || 'currentColor';
+          fill = fill.replace('currentColor', teamColor);
+          fill = fill.replace(/var\(--piece-accent,\s*([^)]+)\)/, (_, fallback) => {
+            if (fallback.trim() === 'currentColor') return accentColor;
+            if (fallback.trim() === '#000') return accentColor;
+            return fallback.trim();
+          });
+          path.setAttribute('fill', fill);
+        }
+        svg.appendChild(path);
+      }
+
+      // Serialize SVG to data URL
+      const serializer = new XMLSerializer();
+      const svgStr = serializer.serializeToString(svg);
+      const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+
+      // Create canvas at native pixel size
+      const canvas = document.createElement('canvas');
+      canvas.width = nativeSize;
+      canvas.height = nativeSize;
+      canvas.style.width = displaySize + 'px';
+      canvas.style.height = displaySize + 'px';
+
+      const img = new Image();
+      img.onload = () => {
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, nativeSize, nativeSize);
+      };
+      img.src = dataUrl;
+
+      return canvas;
+    }
+
+    function buildPanel(nativeSize, displayCellSize) {
+      const panel = document.createElement('div');
+      panel.className = 'panel';
+
+      const h2 = document.createElement('h2');
+      h2.textContent = nativeSize + 'x' + nativeSize + ' sprites';
+      panel.appendChild(h2);
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      const scale = Math.round(displayCellSize / nativeSize * 10) / 10;
+      info.textContent = 'Displayed at ' + displayCellSize + 'px (' + scale + 'x upscale)';
+      panel.appendChild(info);
+
+      // Mock board
+      const board = document.createElement('div');
+      board.className = 'board';
+      board.style.width = (displayCellSize * 8) + 'px';
+      board.style.height = (displayCellSize * 4) + 'px';
+
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 8; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell ' + ((x + y) % 2 === 0 ? 'light' : 'dark');
+          cell.style.width = displayCellSize + 'px';
+          cell.style.height = displayCellSize + 'px';
+
+          const type = BOARD_PIECES[y][x];
+          const team = BOARD_TEAMS[y][x];
+          const spriteSize = Math.floor(displayCellSize * 0.8);
+          const canvas = svgToPixelated(type, team, nativeSize, spriteSize);
+          if (canvas) cell.appendChild(canvas);
+          board.appendChild(cell);
+        }
+      }
+      panel.appendChild(board);
+
+      // All pieces grid
+      const label = document.createElement('div');
+      label.className = 'section-label';
+      label.textContent = 'All 42 pieces';
+      panel.appendChild(label);
+
+      const grid = document.createElement('div');
+      grid.className = 'sprite-grid';
+
+      for (const type of ALL_PIECES) {
+        const sc = document.createElement('div');
+        sc.className = 'sprite-cell';
+        const canvas = svgToPixelated(type, 'player', nativeSize, 48);
+        if (canvas) sc.appendChild(canvas);
+        const nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.textContent = type;
+        nameEl.title = type;
+        sc.appendChild(nameEl);
+        grid.appendChild(sc);
+      }
+      panel.appendChild(grid);
+
+      return panel;
+    }
+
+    function render() {
+      const container = document.getElementById('comparison');
+      container.innerHTML = '';
+      container.appendChild(buildPanel(20, currentDisplaySize));
+      container.appendChild(buildPanel(24, currentDisplaySize));
+      container.appendChild(buildPanel(28, currentDisplaySize));
+    }
+
+    function setDisplaySize(size, btn) {
+      currentDisplaySize = size;
+      document.querySelectorAll('.toggle-bar button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      render();
+    }
+
+    render();
+  </script>
+</body>
+</html>
