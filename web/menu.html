@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Roguelike</title>
+  <link rel="stylesheet" href="menu.css">
+</head>
+<body>
+  <div id="bg-effects"></div>
+
+  <!-- Phase 1: Main Menu -->
+  <div id="main-menu" class="phase active">
+    <h1>CHESS</h1>
+    <h2>ROGUELIKE AUTO-BATTLE</h2>
+
+    <div class="elo-badge" id="elo-badge">&#9670; 0 ELO</div>
+
+    <div class="stats-ribbon" id="stats-ribbon">
+      <span id="stat-runs">0 Runs</span>
+      <span class="stat-sep">|</span>
+      <span id="stat-wins">0 Wins</span>
+      <span class="stat-sep">|</span>
+      <span id="stat-bosses">0 Bosses</span>
+    </div>
+
+    <div class="menu-cards">
+      <button class="menu-card" id="btn-continue" data-action="continue" style="display:none">
+        <span class="card-icon">&#9654;</span>
+        <span class="card-title">Continue Run</span>
+        <span class="card-desc" id="continue-desc">Resume wave ?</span>
+      </button>
+      <button class="menu-card" data-action="tournament">
+        <span class="card-icon">&#9813;</span>
+        <span class="card-title">Tournament</span>
+        <span class="card-desc">Structured campaign with bosses</span>
+      </button>
+      <button class="menu-card" data-action="free_play">
+        <span class="card-icon">&#9876;</span>
+        <span class="card-title">Free Play</span>
+        <span class="card-desc">Endless waves (classic mode)</span>
+      </button>
+      <button class="menu-card" data-action="elo_shop">
+        <span class="card-icon">&#9733;</span>
+        <span class="card-title">ELO Shop</span>
+        <span class="card-desc">Spend ELO on permanent unlocks</span>
+      </button>
+      <button class="menu-card" data-action="chessticon">
+        <span class="card-icon">&#9823;</span>
+        <span class="card-title">Chessticon</span>
+        <span class="card-desc">Bestiary &amp; codex of all items</span>
+      </button>
+      <button class="menu-card" data-action="settings">
+        <span class="card-icon">&#9881;</span>
+        <span class="card-title">Settings</span>
+        <span class="card-desc">Battle speed, particles &amp; more</span>
+      </button>
+    </div>
+
+    <button class="quit-btn" id="btn-quit">Quit</button>
+  </div>
+
+  <!-- Phase 2: Difficulty Selection -->
+  <div id="difficulty-menu" class="phase">
+    <h2>Select Difficulty</h2>
+
+    <div class="difficulty-cards">
+      <button class="difficulty-card" data-difficulty="basic">
+        <span class="diff-color basic"></span>
+        <div class="diff-info">
+          <span class="diff-title">Basic</span>
+          <span class="diff-stars">&#9733;</span>
+          <span class="diff-desc">Standard challenge</span>
+        </div>
+      </button>
+      <button class="difficulty-card" data-difficulty="extreme">
+        <span class="diff-color extreme"></span>
+        <div class="diff-info">
+          <span class="diff-title">Extreme</span>
+          <span class="diff-stars">&#9733;&#9733;</span>
+          <span class="diff-desc">Tougher enemies, +mods</span>
+        </div>
+      </button>
+      <button class="difficulty-card" data-difficulty="grandmaster" id="btn-grandmaster">
+        <span class="diff-color grandmaster"></span>
+        <div class="diff-info">
+          <span class="diff-title">Grandmaster</span>
+          <span class="diff-stars">&#9733;&#9733;&#9733;</span>
+          <span class="diff-desc">Ultimate challenge</span>
+        </div>
+        <span class="lock-overlay" id="gm-lock">&#128274;</span>
+      </button>
+    </div>
+
+    <button class="back-btn" id="btn-back">&#9664; Back</button>
+  </div>
+
+  <!-- Settings overlay -->
+  <div id="settings-overlay" class="overlay-hidden">
+    <div class="options-backdrop"></div>
+    <div class="options-panel">
+      <h2>Settings</h2>
+      <div class="options-section">
+        <div class="options-label">Battle Speed</div>
+        <div class="speed-slider">
+          <button class="speed-btn" id="menu-speed-down">-</button>
+          <span id="menu-speed-value">400ms</span>
+          <button class="speed-btn" id="menu-speed-up">+</button>
+        </div>
+      </div>
+      <div class="options-section">
+        <div class="options-label">Particles</div>
+        <button class="toggle-btn" id="menu-particles-toggle">ON</button>
+      </div>
+      <div class="options-buttons">
+        <button class="options-btn" id="menu-settings-back">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chessticon codex overlay -->
+  <div id="chessticon-overlay" class="overlay-hidden">
+    <div class="options-backdrop"></div>
+    <div class="chessticon-panel">
+      <h2>Chessticon</h2>
+      <div class="chessticon-tabs">
+        <button class="chessticon-tab active" data-tab="pieces">Pieces</button>
+        <button class="chessticon-tab" data-tab="modifiers">Modifiers</button>
+        <button class="chessticon-tab" data-tab="tarots">Tarots</button>
+        <button class="chessticon-tab" data-tab="artifacts">Artifacts</button>
+        <button class="chessticon-tab" data-tab="synergies">Synergies</button>
+      </div>
+      <div id="chessticon-content" class="codex-grid"></div>
+      <button class="options-btn" id="menu-codex-back">Back</button>
+    </div>
+  </div>
+
+  <script src="chessticon.js"></script>
+  <script src="menu.js"></script>
+</body>
+</html>

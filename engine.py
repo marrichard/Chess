@@ -84,6 +84,10 @@ KEY_MAP = {
     tcod.event.KeySym.DOWN: Action.DOWN,
     tcod.event.KeySym.LEFT: Action.LEFT,
     tcod.event.KeySym.RIGHT: Action.RIGHT,
+    tcod.event.KeySym.w: Action.UP,
+    tcod.event.KeySym.a: Action.LEFT,
+    tcod.event.KeySym.s: Action.DOWN,
+    tcod.event.KeySym.d: Action.RIGHT,
     tcod.event.KeySym.RETURN: Action.CONFIRM,
     tcod.event.KeySym.KP_ENTER: Action.CONFIRM,
     tcod.event.KeySym.ESCAPE: Action.CANCEL,
@@ -373,6 +377,101 @@ class Engine:
         self.set_mode(mode)
         self.mode.on_enter()
         self.state = GameState.PLAYING
+
+    def launch_from_menu(self, result: dict) -> None:
+        """Set up a game mode based on the pywebview menu result."""
+        action = result["action"]
+        if action == "tournament":
+            self._launch_tournament(result["difficulty"])
+        elif action == "free_play":
+            self._launch_free_play()
+        elif action == "continue":
+            self._launch_continue()
+        elif action == "elo_shop":
+            self._launch_elo_shop()
+
+    def run_game(self) -> dict:
+        """Run the tcod game loop without the menu.
+
+        Returns a dict describing why the game ended:
+          {"reason": "menu"}       — user pressed Q / mode returned to menu
+          {"reason": "quit"}       — user closed the window
+          {"reason": "play_again", "tournament": bool, "difficulty": str}
+        """
+        from piece_tiles import install_piece_tiles
+
+        # Load a monospace font
+        tileset = None
+        if sys.platform == "win32":
+            for font in ("consola.ttf", "lucon.ttf", "cour.ttf"):
+                path = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", font)
+                if os.path.exists(path):
+                    tileset = make_square_tileset(path, tile_height=20)
+                    break
+
+        if tileset:
+            install_piece_tiles(tileset)
+
+        with tcod.context.new(
+            columns=80,
+            rows=40,
+            tileset=tileset,
+            title=TITLE,
+            vsync=True,
+            sdl_window_flags=tcod.context.SDL_WINDOW_RESIZABLE | tcod.context.SDL_WINDOW_FULLSCREEN,
+        ) as context:
+            self.fullscreen = True
+
+            while True:
+                cols, rows = context.recommended_console_size()
+                cols = max(cols, 60)
+                rows = max(rows, 30)
+                console = tcod.console.Console(cols, rows, order="C")
+
+                renderer.clear(console)
+                if self.mode:
+                    self.mode.render(console)
+                context.present(console, keep_aspect=True)
+
+                if self.mode and hasattr(self.mode, 'has_active_animations'):
+                    self.animating = self.mode.has_active_animations()
+                else:
+                    self.animating = False
+
+                action = self._wait_for_input(context)
+                if action == Action.NONE:
+                    continue
+                if action == Action.TOGGLE_FULLSCREEN:
+                    self.fullscreen = not self.fullscreen
+                    context.sdl_window.fullscreen = self.fullscreen
+                    continue
+                if action == Action.SCREENSHOT:
+                    context.save_screenshot("game_screenshot.png")
+                    continue
+                if action == Action.QUIT:
+                    return {"reason": "menu"}
+                if action == Action.MOUSE_MOVE:
+                    if self.mode and hasattr(self.mode, 'on_mouse_move'):
+                        self.mode.on_mouse_move(self.mouse_pixel)
+                    continue
+                if action in (Action.MOUSE_CLICK, Action.MOUSE_UP):
+                    if self.mode and hasattr(self.mode, 'on_mouse_move'):
+                        self.mode.on_mouse_move(self.mouse_pixel)
+
+                # Handle mode input
+                if self.mode:
+                    new_state = self.mode.handle_input(action)
+                    if new_state and new_state == GameState.MENU:
+                        # Check play-again
+                        if hasattr(self.mode, 'play_again') and self.mode.play_again:
+                            return {
+                                "reason": "play_again",
+                                "tournament": getattr(self.mode, 'tournament', False),
+                                "difficulty": getattr(self.mode, 'difficulty', 'basic'),
+                            }
+                        return {"reason": "menu"}
+                    if new_state:
+                        self.state = new_state
 
     def _render_menu(self, console: tcod.console.Console) -> None:
         cw, ch = console.width, console.height

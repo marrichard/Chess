@@ -22,6 +22,11 @@ class SaveData:
     unlocked_modifiers: list[str] = field(default_factory=lambda: list(DEFAULT_MODIFIERS))
     upgrades: dict[str, int] = field(default_factory=dict)
     grandmaster_unlocked: bool = False
+    discovered_synergies: list[str] = field(default_factory=list)
+    settings: dict = field(default_factory=lambda: {
+        "battle_speed": 400,
+        "particles_enabled": True,
+    })
     stats: dict[str, int] = field(default_factory=lambda: {
         "tournaments_completed": 0,
         "tournaments_won": 0,
@@ -43,6 +48,8 @@ def load() -> SaveData:
         data.unlocked_modifiers = raw.get("unlocked_modifiers", list(DEFAULT_MODIFIERS))
         data.upgrades = raw.get("upgrades", {})
         data.grandmaster_unlocked = raw.get("grandmaster_unlocked", False)
+        data.discovered_synergies = raw.get("discovered_synergies", [])
+        data.settings = raw.get("settings", {"battle_speed": 400, "particles_enabled": True})
         data.stats = raw.get("stats", data.stats)
         return data
     except (json.JSONDecodeError, OSError):
@@ -57,6 +64,8 @@ def save(data: SaveData) -> None:
         "unlocked_modifiers": data.unlocked_modifiers,
         "upgrades": data.upgrades,
         "grandmaster_unlocked": data.grandmaster_unlocked,
+        "discovered_synergies": data.discovered_synergies,
+        "settings": data.settings,
         "stats": data.stats,
     }
     with open(SAVE_PATH, "w") as f:

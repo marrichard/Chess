@@ -1,0 +1,581 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Consolas, 'Courier New', monospace;
+  background: #0a0a14;
+  color: #e0e0e0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  user-select: none;
+}
+
+/* === Animated Background === */
+#bg-effects {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(180, 142, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(100, 60, 200, 0.06) 0%, transparent 50%),
+    linear-gradient(180deg, #0a0a14 0%, #12121e 100%);
+  animation: bgShift 20s ease-in-out infinite alternate;
+  z-index: 0;
+}
+
+@keyframes bgShift {
+  0%   { background-position: 0% 0%, 100% 100%, center; }
+  100% { background-position: 100% 100%, 0% 0%, center; }
+}
+
+/* === Phase Transitions === */
+.phase {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 300ms ease, transform 300ms ease;
+  z-index: 1;
+}
+
+.phase.active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* === Typography === */
+h1 {
+  font-size: 3.2rem;
+  font-weight: 700;
+  letter-spacing: 0.5em;
+  color: #b48eff;
+  text-shadow: 0 0 30px rgba(180, 142, 255, 0.4);
+  margin-bottom: 0.1em;
+}
+
+h2 {
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.35em;
+  color: #888;
+  margin-bottom: 1.8em;
+}
+
+/* === ELO Badge === */
+.elo-badge {
+  font-size: 1.1rem;
+  color: #ffd700;
+  text-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+  margin-bottom: 0.6em;
+  animation: eloPulse 3s ease-in-out infinite;
+}
+
+@keyframes eloPulse {
+  0%, 100% { text-shadow: 0 0 12px rgba(255, 215, 0, 0.3); }
+  50%      { text-shadow: 0 0 20px rgba(255, 215, 0, 0.5); }
+}
+
+/* === Stats Ribbon === */
+.stats-ribbon {
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 2em;
+  letter-spacing: 0.05em;
+}
+
+.stat-sep {
+  margin: 0 0.6em;
+  color: #444;
+}
+
+/* === Menu Cards (Vertical Column) === */
+.menu-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 340px;
+  margin-bottom: 1.5em;
+}
+
+.menu-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  text-align: left;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+
+  /* Staggered entrance animation */
+  opacity: 0;
+  transform: translateY(16px);
+  animation: cardEnter 400ms ease forwards;
+}
+
+.menu-card:nth-child(1) { animation-delay: 100ms; }
+.menu-card:nth-child(2) { animation-delay: 180ms; }
+.menu-card:nth-child(3) { animation-delay: 260ms; }
+.menu-card:nth-child(4) { animation-delay: 340ms; }
+
+@keyframes cardEnter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menu-card:hover,
+.menu-card:focus-visible {
+  border-color: rgba(180, 142, 255, 0.6);
+  box-shadow: 0 0 20px rgba(180, 140, 255, 0.3);
+  transform: translateY(-3px);
+}
+
+.menu-card:active {
+  transform: scale(0.97);
+  box-shadow: 0 0 10px rgba(180, 140, 255, 0.2);
+}
+
+.menu-card.focused {
+  border-color: rgba(180, 142, 255, 0.6);
+  box-shadow: 0 0 20px rgba(180, 140, 255, 0.3);
+  transform: translateY(-3px);
+}
+
+.card-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  width: 2em;
+  text-align: center;
+}
+
+.card-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.card-desc {
+  font-size: 0.75rem;
+  color: #888;
+  display: block;
+  margin-top: 2px;
+}
+
+/* === Quit Button === */
+.quit-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #666;
+  padding: 8px 28px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 200ms ease;
+  outline: none;
+}
+
+.quit-btn:hover,
+.quit-btn:focus-visible,
+.quit-btn.focused {
+  color: #ff6666;
+  border-color: rgba(255, 100, 100, 0.4);
+  box-shadow: 0 0 12px rgba(255, 80, 80, 0.2);
+}
+
+/* === Difficulty Cards (Horizontal Row) === */
+#difficulty-menu h2 {
+  font-size: 1.3rem;
+  color: #b48eff;
+  letter-spacing: 0.2em;
+  margin-bottom: 2em;
+}
+
+.difficulty-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  margin-bottom: 2em;
+}
+
+.difficulty-card {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 180px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  overflow: hidden;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+  text-align: left;
+  padding: 0;
+
+  opacity: 0;
+  transform: translateY(16px);
+  animation: cardEnter 400ms ease forwards;
+}
+
+.difficulty-card:nth-child(1) { animation-delay: 100ms; }
+.difficulty-card:nth-child(2) { animation-delay: 200ms; }
+.difficulty-card:nth-child(3) { animation-delay: 300ms; }
+
+.difficulty-card:hover,
+.difficulty-card:focus-visible,
+.difficulty-card.focused {
+  border-color: rgba(180, 142, 255, 0.6);
+  box-shadow: 0 0 20px rgba(180, 140, 255, 0.3);
+  transform: translateY(-3px);
+}
+
+.difficulty-card:active {
+  transform: scale(0.97);
+}
+
+/* Color-coded left border */
+.diff-color {
+  width: 4px;
+  flex-shrink: 0;
+}
+
+.diff-color.basic       { background: #64c864; }
+.diff-color.extreme     { background: #ffb43c; }
+.diff-color.grandmaster { background: #ff3c3c; }
+
+.diff-info {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diff-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.diff-stars {
+  color: #ffd700;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.diff-desc {
+  font-size: 0.7rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* Grandmaster lock overlay */
+.lock-overlay {
+  display: none;
+}
+
+.difficulty-card.locked .lock-overlay {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 20, 0.7);
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  border-radius: 10px;
+}
+
+.difficulty-card.locked {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* === Back Button === */
+.back-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #888;
+  padding: 8px 28px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 200ms ease;
+  outline: none;
+}
+
+.back-btn:hover,
+.back-btn:focus-visible,
+.back-btn.focused {
+  color: #b48eff;
+  border-color: rgba(180, 142, 255, 0.4);
+}
+
+/* Extra menu card animation delays */
+.menu-card:nth-child(5) { animation-delay: 420ms; }
+.menu-card:nth-child(6) { animation-delay: 500ms; }
+
+/* ================================================================
+   OVERLAYS (Settings, Chessticon)
+   ================================================================ */
+
+.overlay-hidden {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+.overlay-visible {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 200ms ease;
+}
+
+.options-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 15, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.options-panel, .chessticon-panel {
+  position: relative;
+  background: rgba(15, 15, 30, 0.98);
+  border: 1px solid rgba(180, 142, 255, 0.4);
+  border-radius: 12px;
+  padding: 28px 36px;
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-width: 320px;
+  max-width: 700px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  transform: scale(0.95);
+  transition: transform 200ms ease;
+}
+
+.overlay-visible .options-panel,
+.overlay-visible .chessticon-panel {
+  transform: scale(1);
+}
+
+.options-panel h2, .chessticon-panel h2 {
+  color: #b48eff;
+  font-size: 1.3rem;
+  letter-spacing: 0.2em;
+  margin-bottom: 4px;
+}
+
+.options-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(180, 142, 255, 0.1);
+}
+
+.options-label {
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.speed-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.speed-btn {
+  width: 28px;
+  height: 28px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.3);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.speed-btn:hover {
+  border-color: #b48eff;
+  box-shadow: 0 0 8px rgba(180, 142, 255, 0.3);
+}
+
+#menu-speed-value {
+  font-size: 0.85rem;
+  color: #ffd700;
+  min-width: 50px;
+  text-align: center;
+}
+
+.toggle-btn {
+  padding: 6px 18px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.3);
+  border-radius: 6px;
+  color: #66ff88;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.toggle-btn:hover {
+  border-color: #b48eff;
+}
+
+.toggle-btn.off {
+  color: #ff6666;
+}
+
+.options-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.options-btn {
+  padding: 10px 28px;
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.3);
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 200ms ease;
+  text-align: center;
+}
+
+.options-btn:hover {
+  border-color: #b48eff;
+  box-shadow: 0 0 12px rgba(180, 142, 255, 0.3);
+}
+
+/* --- Chessticon tabs --- */
+.chessticon-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.chessticon-tab {
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #888;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.chessticon-tab:hover {
+  color: #ccc;
+}
+
+.chessticon-tab.active {
+  color: #b48eff;
+  border-bottom-color: #b48eff;
+}
+
+/* --- Codex grid --- */
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.codex-card {
+  background: rgba(20, 20, 40, 0.85);
+  border: 1px solid rgba(180, 142, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  transition: all 150ms ease;
+}
+
+.codex-card:hover {
+  border-color: rgba(180, 142, 255, 0.5);
+  box-shadow: 0 0 10px rgba(180, 142, 255, 0.2);
+}
+
+.codex-card.locked {
+  opacity: 0.35;
+}
+
+.codex-card .codex-icon { font-size: 1.6rem; }
+.codex-card .codex-name { font-size: 0.8rem; font-weight: bold; color: #e0e0e0; }
+.codex-card .codex-stats { font-size: 0.65rem; color: #aaa; }
+.codex-card .codex-desc { font-size: 0.6rem; color: #888; }
+
+.codex-card .codex-rarity {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.codex-card .codex-rarity.common { color: #aaa; }
+.codex-card .codex-rarity.uncommon { color: #66bbff; }
+.codex-card .codex-rarity.rare { color: #ff66ff; }
+
+.codex-subheader {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #888;
+  padding: 6px 0 2px;
+  border-bottom: 1px solid rgba(180, 142, 255, 0.1);
+}

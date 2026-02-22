@@ -307,8 +307,34 @@ def draw_panel(
     title: str = "",
     lines: list[str] | None = None,
     fg: tuple[int, int, int] = FG_TEXT,
-) -> None:
-    """Draw a text panel with box-drawing border."""
+    auto_height: bool = False,
+) -> int:
+    """Draw a text panel with box-drawing border and word-wrapping.
+
+    Returns actual height used (useful when auto_height=True).
+    """
+    inner_w = max(1, width - 2)
+
+    # Word-wrap all lines to fit panel width
+    wrapped: list[str] = []
+    if lines:
+        for line in lines:
+            if len(line) <= inner_w:
+                wrapped.append(line)
+            elif line.strip() == "":
+                wrapped.append("")
+            else:
+                wrapped.extend(_wrap_text(line, inner_w))
+
+    if auto_height:
+        height = len(wrapped) + 2  # +2 for frame borders
+
+    # Clamp to screen
+    height = min(height, console.height - y)
+    width = min(width, console.width - x)
+    if width < 4 or height < 3:
+        return height
+
     frame_title = f" {title} " if title else ""
     console.draw_frame(
         x, y, width, height,
@@ -318,10 +344,11 @@ def draw_panel(
         bg=BG_PANEL,
     )
 
-    if lines:
-        for i, line in enumerate(lines):
-            if i + 1 < height - 1:  # stay inside frame
-                console.print(x + 1, y + 1 + i, line[:width - 2], fg=fg, bg=BG_PANEL)
+    for i, line in enumerate(wrapped):
+        if i + 1 < height - 1:  # stay inside frame
+            console.print(x + 1, y + 1 + i, line[:inner_w], fg=fg, bg=BG_PANEL)
+
+    return height
 
 
 def draw_menu(
@@ -369,10 +396,11 @@ def draw_roster(
     console.print(x + 1, y, "Roster:", fg=(255, 220, 100), bg=BG_PANEL)
 
     slot_w = 6
-    for i, piece in enumerate(pieces):
+    max_slots = max(1, (width - 1) // slot_w)
+    visible_count = min(len(pieces), max_slots)
+    for i in range(visible_count):
+        piece = pieces[i]
         sx = x + 1 + i * slot_w
-        if sx + slot_w > x + width:
-            break
         sy = y + 1
         fg = FG_PLAYER if piece.team == Team.PLAYER else FG_ENEMY
         bg = HIGHLIGHT_SELECTED if i == selected_idx else BG_PANEL
@@ -387,15 +415,23 @@ def draw_roster(
         label = str(i + 1).center(slot_w)
         console.print(sx, sy + 2, label[:slot_w], fg=FG_DIM, bg=BG_PANEL)
 
+    # Show overflow indicator if more pieces than slots
+    if len(pieces) > max_slots:
+        more = f"+{len(pieces) - max_slots}"
+        console.print(x + width - len(more) - 1, y, more, fg=FG_DIM, bg=BG_PANEL)
+
 
 def draw_message(
     console: tcod.console.Console,
     message: str,
     y: int | None = None,
 ) -> None:
-    """Draw a centered message."""
+    """Draw a centered message, truncated to fit console width."""
     if y is None:
         y = console.height - 2
+    max_w = console.width - 2
+    if len(message) > max_w:
+        message = message[:max_w]
     cx = (console.width - len(message)) // 2
     console.print(max(0, cx), y, message, fg=FG_TEXT, bg=BG_BLACK)
 
@@ -585,6 +621,118 @@ def draw_shop_price_tag(
     tag_x = x + (width - len(tag)) // 2
     fg = (255, 220, 100) if affordable else _dim((255, 220, 100), 0.35)
     console.print(max(0, tag_x), y, tag, fg=fg, bg=BG_FELT)
+
+
+def draw_shop_section_label(
+    console: tcod.console.Console,
+    y: int,
+    width: int,
+    start_x: int,
+    label: str,
+    color: tuple[int, int, int],
+) -> None:
+    """Draw a centered section label like ── Piece Modifiers ──."""
+    text = f" {label} "
+    text_len = len(text)
+    dash_left = (width - text_len) // 2
+    dash_right = width - text_len - dash_left
+    dash_fg = _dim(color, 0.4)
+    # Draw left dashes
+    for i in range(dash_left):
+        sx = start_x + i
+        if 0 <= sx < console.width:
+            console.print(sx, y, "\u2500", fg=dash_fg, bg=BG_FELT)
+    # Draw label text
+    for i, ch in enumerate(text):
+        sx = start_x + dash_left + i
+        if 0 <= sx < console.width:
+            console.print(sx, y, ch, fg=color, bg=BG_FELT)
+    # Draw right dashes
+    for i in range(dash_right):
+        sx = start_x + dash_left + text_len + i
+        if 0 <= sx < console.width:
+            console.print(sx, y, "\u2500", fg=dash_fg, bg=BG_FELT)
+
+
+def draw_held_items_bar(
+    console: tcod.console.Console,
+    x: int,
+    y: int,
+    width: int,
+    tarots: list[dict],
+    artifacts: list[dict],
+    tarot_slots: int,
+    artifact_slots: int,
+) -> int:
+    """Draw a framed bar showing held tarots and artifacts. Returns rows used."""
+    frame_fg = (120, 100, 80)
+    frame_bg = (15, 30, 20)
+    bar_h = 4
+
+    # Fill background
+    console.draw_rect(x, y, width, bar_h, ch=ord(' '), bg=frame_bg)
+
+    # Frame borders
+    if width >= 2:
+        console.print(x, y, "\u250c", fg=frame_fg, bg=frame_bg)
+        console.print(x + width - 1, y, "\u2510", fg=frame_fg, bg=frame_bg)
+        console.print(x, y + bar_h - 1, "\u2514", fg=frame_fg, bg=frame_bg)
+        console.print(x + width - 1, y + bar_h - 1, "\u2518", fg=frame_fg, bg=frame_bg)
+        for sx in range(x + 1, x + width - 1):
+            console.print(sx, y, "\u2500", fg=frame_fg, bg=frame_bg)
+            console.print(sx, y + bar_h - 1, "\u2500", fg=frame_fg, bg=frame_bg)
+        # Mid divider
+        for sx in range(x + 1, x + width - 1):
+            console.print(sx, y + 2, "\u2500", fg=_dim(frame_fg, 0.5), bg=frame_bg)
+        console.print(x, y + 2, "\u251c", fg=frame_fg, bg=frame_bg)
+        console.print(x + width - 1, y + 2, "\u2524", fg=frame_fg, bg=frame_bg)
+    for dy in (1, 2, 3):
+        if dy < bar_h:
+            console.print(x, y + dy, "\u2502", fg=frame_fg, bg=frame_bg)
+            console.print(x + width - 1, y + dy, "\u2502", fg=frame_fg, bg=frame_bg)
+
+    inner_x = x + 2
+    inner_w = width - 4
+
+    # --- Tarots row ---
+    tarot_label = "\u2605 Tarots "
+    console.print(inner_x, y + 1, tarot_label, fg=(200, 100, 255), bg=frame_bg)
+    slot_x = inner_x + len(tarot_label)
+    for i in range(tarot_slots):
+        if slot_x >= inner_x + inner_w:
+            break
+        if i < len(tarots):
+            t = tarots[i]
+            icon = t.get("icon", "\u2605")
+            name = t["name"][:8]
+            slot_str = f"{icon}{name} "
+            fg = t.get("color", (200, 100, 255))
+            console.print(min(slot_x, x + width - 2), y + 1, slot_str[:max(1, x + width - 1 - slot_x)], fg=fg, bg=frame_bg)
+            slot_x += len(slot_str)
+        else:
+            console.print(min(slot_x, x + width - 2), y + 1, "[\u00b7] ", fg=(60, 50, 70), bg=frame_bg)
+            slot_x += 4
+
+    # --- Artifacts row ---
+    art_label = "\u2666 Artifacts "
+    console.print(inner_x, y + 3, art_label, fg=(255, 180, 60), bg=frame_bg)
+    slot_x = inner_x + len(art_label)
+    for i in range(artifact_slots):
+        if slot_x >= inner_x + inner_w:
+            break
+        if i < len(artifacts):
+            a = artifacts[i]
+            icon = a.get("icon", "\u2666")
+            name = a["name"][:8]
+            slot_str = f"{icon}{name} "
+            fg = a.get("color", (255, 180, 60))
+            console.print(min(slot_x, x + width - 2), y + 3, slot_str[:max(1, x + width - 1 - slot_x)], fg=fg, bg=frame_bg)
+            slot_x += len(slot_str)
+        else:
+            console.print(min(slot_x, x + width - 2), y + 3, "[\u00b7] ", fg=(70, 60, 40), bg=frame_bg)
+            slot_x += 4
+
+    return bar_h
 
 
 def draw_shop_done_button(
@@ -945,11 +1093,25 @@ def draw_tooltip(
     if y + height > console.height:
         y = max(0, console.height - height)
 
+    # Word-wrap lines to fit
+    inner_w = width - 2
+    wrapped_lines: list[tuple[str, tuple[int, int, int]]] = []
+    for text, fg_c in lines:
+        if len(text) <= inner_w:
+            wrapped_lines.append((text, fg_c))
+        else:
+            for wl in _wrap_text(text, inner_w):
+                wrapped_lines.append((wl, fg_c))
+    height = len(wrapped_lines) + 2
+    if y + height > console.height:
+        y = max(0, console.height - height)
+
     # Render on offscreen console, then blit with transparency
     tip = tcod.console.Console(width, height, order="C")
     tip.draw_frame(0, 0, width, height, title="", clear=True, fg=FG_DIM, bg=BG_PANEL)
-    for i, (text, fg) in enumerate(lines):
-        tip.print(1, 1 + i, text[:width - 2], fg=fg, bg=BG_PANEL)
+    for i, (text, fg_c) in enumerate(wrapped_lines):
+        if 1 + i < height - 1:
+            tip.print(1, 1 + i, text[:inner_w], fg=fg_c, bg=BG_PANEL)
     tip.blit(console, dest_x=x, dest_y=y, bg_alpha=0.85)
 
 

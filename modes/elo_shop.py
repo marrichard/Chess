@@ -9,10 +9,23 @@ import renderer
 import save_data as sd
 
 SHOP_CATALOG = [
-    # Pieces
+    # Standard Pieces
     {"key": "rook",     "category": "Piece",    "name": "Rook",          "cost": 200,  "desc": "Unlock Rook for starting roster"},
     {"key": "queen",    "category": "Piece",    "name": "Queen",         "cost": 500,  "desc": "Unlock Queen for starting roster"},
     {"key": "king",     "category": "Piece",    "name": "King",          "cost": 1000, "desc": "Unlock King for starting roster"},
+    # New Abstract Pieces
+    {"key": "bomb",         "category": "Piece", "name": "Bomb",         "cost": 150,  "desc": "Explodes on death, 10 dmg in 3x3"},
+    {"key": "mimic",        "category": "Piece", "name": "Mimic",        "cost": 200,  "desc": "Transforms into killer on death"},
+    {"key": "leech",        "category": "Piece", "name": "Leech",        "cost": 200,  "desc": "Heals when dealing damage"},
+    {"key": "summoner",     "category": "Piece", "name": "Summoner",     "cost": 300,  "desc": "Spawns pawns each turn"},
+    {"key": "ghost",        "category": "Piece", "name": "Ghost",        "cost": 250,  "desc": "Passes through all pieces"},
+    {"key": "gambler",      "category": "Piece", "name": "Gambler",      "cost": 200,  "desc": "10 ATK but 50% miss chance"},
+    {"key": "anchor_piece", "category": "Piece", "name": "Anchor",       "cost": 250,  "desc": "20 HP wall, -2 dmg aura"},
+    {"key": "parasite",     "category": "Piece", "name": "Parasite",     "cost": 200,  "desc": "Drains 1 HP from adjacent enemies"},
+    {"key": "mirror_piece", "category": "Piece", "name": "Mirror",       "cost": 300,  "desc": "Reflects ally movements"},
+    {"key": "void",         "category": "Piece", "name": "Void",         "cost": 400,  "desc": "Blocks cells after moving"},
+    {"key": "phoenix",      "category": "Piece", "name": "Phoenix",      "cost": 350,  "desc": "Revives once at 50% HP"},
+    {"key": "king_rat",     "category": "Piece", "name": "King Rat",     "cost": 150,  "desc": "Faster with more rats"},
     # Modifiers
     {"key": "piercing", "category": "Modifier", "name": "Piercing",      "cost": 150,  "desc": "Piercing appears in battle shop"},
     {"key": "royal",    "category": "Modifier", "name": "Royal",         "cost": 300,  "desc": "Royal appears in battle shop"},
@@ -67,12 +80,43 @@ class EloShop:
             return self.save_data.upgrades.get(item["key"], 0)
         return 0
 
+    def _prev_category_start(self) -> int:
+        """Return index of first item in the previous category section."""
+        current_cat = SHOP_CATALOG[self.selection]["category"]
+        # Walk backward to find start of current category
+        i = self.selection
+        while i > 0 and SHOP_CATALOG[i - 1]["category"] == current_cat:
+            i -= 1
+        if i == 0:
+            return 0  # already at first category
+        # Now i is the start of current category; go to previous category start
+        prev_cat = SHOP_CATALOG[i - 1]["category"]
+        while i > 0 and SHOP_CATALOG[i - 1]["category"] == prev_cat:
+            i -= 1
+        return i
+
+    def _next_category_start(self) -> int:
+        """Return index of first item in the next category section."""
+        current_cat = SHOP_CATALOG[self.selection]["category"]
+        i = self.selection
+        while i < len(SHOP_CATALOG) - 1 and SHOP_CATALOG[i + 1]["category"] == current_cat:
+            i += 1
+        if i >= len(SHOP_CATALOG) - 1:
+            return len(SHOP_CATALOG) - 1
+        return i + 1
+
     def handle_input(self, action: Action) -> GameState | None:
         if action == Action.LEFT:
             self.selection = max(0, self.selection - 1)
             self._update_scroll()
         elif action == Action.RIGHT:
             self.selection = min(len(SHOP_CATALOG) - 1, self.selection + 1)
+            self._update_scroll()
+        elif action == Action.UP:
+            self.selection = self._prev_category_start()
+            self._update_scroll()
+        elif action == Action.DOWN:
+            self.selection = self._next_category_start()
             self._update_scroll()
         elif action == Action.CONFIRM:
             self._purchase()
@@ -269,6 +313,10 @@ class EloShop:
         """Return an icon character for a shop item."""
         icons = {
             "rook": "\u265c", "queen": "\u265b", "king": "\u265a",
+            "bomb": "\u2738", "mimic": "?", "leech": "\u2687",
+            "summoner": "\u2726", "ghost": "\u2601", "gambler": "\u2660",
+            "anchor_piece": "\u2693", "parasite": "\u2623", "mirror_piece": "\u25C8",
+            "void": "\u25C9", "phoenix": "\u2600", "king_rat": "\u2689",
             "piercing": "\u2694", "royal": "\u2654",
             "extra_piece": "+", "start_gold": "$", "extra_life": "\u2665",
             "tarot_slot": "\u2605", "artifact_slot": "\u2726",

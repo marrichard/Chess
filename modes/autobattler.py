@@ -9,13 +9,14 @@ import numpy as np
 import tcod.console
 
 from board import Board
-from pieces import Piece, PieceType, Team, PIECE_VALUES, MODIFIERS
+from pieces import Piece, PieceType, Team, PIECE_VALUES, PIECE_STATS, MODIFIERS
 from engine import Action, GameState
 from modifiers import (
     CellModifier, BorderModifier, CELL_MODIFIERS, BORDER_MODIFIERS,
     PIECE_MODIFIER_VISUALS, make_cell_modifier, make_border_modifier,
     TAROT_CARDS, ARTIFACTS,
 )
+from synergies import check_synergies, get_synergy_display_data
 import renderer
 import save_data as sd
 from particles import ParticleSystem
@@ -133,11 +134,38 @@ def evaluate_board(board: Board, team: Team) -> float:
     allies = board.get_team_pieces(ally_team)
     enemies = board.get_team_pieces(enemy_team)
 
-    # 1. Material advantage (dominant factor, scaled up)
+    # 1. Material advantage weighted by HP fraction
     for p in allies:
-        score += p.value * 10
+        hp_frac = p.hp / p.max_hp if p.max_hp > 0 else 1.0
+        score += p.value * 10 * hp_frac
+        # Bonus for can-kill-this-turn threats
+        for mx, my in p.get_capture_moves(board):
+            target = board.get_piece_at(mx, my)
+            if target and target.hp <= p.attack:
+                score += target.value * 3  # bonus for killable targets
+        # New piece bonuses
+        if p.piece_type == PieceType.SUMMONER:
+            adj_empty = sum(1 for dx in [-1,0,1] for dy in [-1,0,1]
+                           if (dx or dy) and board.in_bounds(p.x+dx, p.y+dy) and board.is_empty(p.x+dx, p.y+dy))
+            score += adj_empty * 0.3
+        elif p.piece_type == PieceType.PARASITE:
+            adj_enemies_count = sum(1 for dx in [-1,0,1] for dy in [-1,0,1]
+                                    if (dx or dy) and board.get_piece_at(p.x+dx, p.y+dy)
+                                    and board.get_piece_at(p.x+dx, p.y+dy).team == enemy_team)
+            score += adj_enemies_count * 0.5
+        elif p.piece_type == PieceType.ANCHOR_PIECE:
+            nearby_friends = sum(1 for a in allies if a is not p and abs(a.x-p.x)+abs(a.y-p.y) <= 2)
+            score += nearby_friends * 0.4
+        elif p.piece_type == PieceType.BOMB:
+            adj_enemies_count = sum(1 for dx in [-1,0,1] for dy in [-1,0,1]
+                                    if (dx or dy) and board.get_piece_at(p.x+dx, p.y+dy)
+                                    and board.get_piece_at(p.x+dx, p.y+dy).team == enemy_team)
+            score += adj_enemies_count * 1.0
+        elif p.piece_type == PieceType.GAMBLER:
+            score -= 1.0  # penalize unreliability
     for p in enemies:
-        score -= p.value * 10
+        hp_frac = p.hp / p.max_hp if p.max_hp > 0 else 1.0
+        score -= p.value * 10 * hp_frac
 
     center_x, center_y = board.width / 2.0, board.height / 2.0
 
@@ -186,15 +214,30 @@ def evaluate_board(board: Board, team: Team) -> float:
     return score
 
 
-def _apply_move(board: Board, piece: Piece, mx: int, my: int, rng: random.Random) -> None:
-    """Apply a move on a board (mutates in place). Handles captures and promotion."""
+def _apply_move(board: Board, piece: Piece, mx: int, my: int, rng: random.Random,
+                 active_synergies: list[str] | None = None) -> None:
+    """Apply a move on a board (mutates in place). Handles captures, promotion, and death triggers."""
+    old_x, old_y = piece.x, piece.y
     target = board.get_piece_at(mx, my)
     if target and target.team != piece.team:
-        board.move_piece(piece, mx, my, rng=rng)
+        board.move_piece(piece, mx, my, rng=rng, active_synergies=active_synergies)
+        # Process on-death triggers for the target (Bomb, Mimic, Phoenix)
+        if target and not target.alive:
+            board.process_on_death(target, piece, rng, active_synergies)
+        # Also check if attacker died (e.g. thorns)
+        if not piece.alive:
+            board.process_on_death(piece, target, rng, active_synergies)
     else:
         piece.x, piece.y = mx, my
         piece.has_moved = True
         board.check_promotion(piece, rng)
+
+    # Process mirror reflected moves
+    if piece.alive:
+        board.process_mirror_moves(piece, old_x, old_y, rng, active_synergies)
+
+    # Clean up dead pieces so subsequent evaluation is accurate
+    board.pieces = [p for p in board.pieces if p.alive]
 
 
 def minimax_choose_move(
@@ -202,6 +245,7 @@ def minimax_choose_move(
     rng: random.Random | None = None,
     excluded: dict[int, tuple[int, int]] | None = None,
     piece_streaks: dict[int, int] | None = None,
+    active_synergies: list[str] | None = None,
 ) -> tuple[Piece, int, int] | None:
     """Depth-2 minimax: pick our best move assuming the opponent replies optimally.
 
@@ -242,7 +286,7 @@ def minimax_choose_move(
             scores.append(-999.0)
             continue
         clone_piece = clone.pieces[p_idx]
-        _apply_move(clone, clone_piece, mx, my, _rng)
+        _apply_move(clone, clone_piece, mx, my, _rng, active_synergies)
 
         # Check if this move ends the game
         if clone.count_alive(enemy_team) == 0:
@@ -269,7 +313,7 @@ def minimax_choose_move(
             if e_idx is None:
                 continue
             clone2_piece = clone2.pieces[e_idx]
-            _apply_move(clone2, clone2_piece, emx, emy, _rng)
+            _apply_move(clone2, clone2_piece, emx, emy, _rng, active_synergies)
 
             val = evaluate_board(clone2, team)
             if val < worst_for_us:
@@ -397,6 +441,9 @@ class AutoBattler:
         self.max_lives: int = 3
         self.play_again: bool = False
 
+        # --- Synergy system ---
+        self.active_synergies: list[str] = []
+
         # --- Tarot & Artifact system ---
         self.tarot_cards: list[dict] = []   # held tarots (key dicts from TAROT_CARDS)
         self.artifacts: list[dict] = []     # held artifacts (key dicts from ARTIFACTS)
@@ -481,6 +528,10 @@ class AutoBattler:
             "has_moved": p.has_moved,
             "alive": p.alive,
             "cell_modifier": cm,
+            "hp": p.hp,
+            "max_hp": p.max_hp,
+            "attack": p.attack,
+            "ability_flags": dict(p.ability_flags),
         }
 
     def _deserialize_piece(self, d: dict) -> Piece:
@@ -492,6 +543,15 @@ class AutoBattler:
             has_moved=d.get("has_moved", False),
             alive=d.get("alive", True),
         )
+        # Restore HP/attack (falls back to __post_init__ defaults if missing)
+        if "hp" in d:
+            p.hp = d["hp"]
+        if "max_hp" in d:
+            p.max_hp = d["max_hp"]
+        if "attack" in d:
+            p.attack = d["attack"]
+        if "ability_flags" in d:
+            p.ability_flags = dict(d["ability_flags"])
         for md in d.get("modifiers", []):
             key = md["effect"]
             if key in MODIFIERS:
@@ -652,7 +712,7 @@ class AutoBattler:
                 piece = self.board.get_piece_at(col_x, row_y)
                 piece_data = None
                 if piece:
-                    mods = [{"name": m.name, "effect": m.effect} for m in piece.modifiers]
+                    mods = [{"name": m.name, "effect": m.effect, "description": m.description} for m in piece.modifiers]
                     cm = None
                     if piece.cell_modifier:
                         cm = piece.cell_modifier.effect
@@ -661,24 +721,33 @@ class AutoBattler:
                         "team": piece.team.value,
                         "modifiers": mods,
                         "cellMod": cm,
+                        "hp": piece.hp,
+                        "maxHp": piece.max_hp,
+                        "attack": piece.attack,
                     }
 
                 cell_mod = None
                 cm_obj = self.board.cell_modifiers.get((col_x, row_y))
                 if cm_obj:
+                    from modifiers import CELL_MODIFIERS
+                    cm_desc = CELL_MODIFIERS.get(cm_obj.effect, {}).get("description", "")
                     cell_mod = {
                         "name": cm_obj.name,
                         "effect": cm_obj.effect,
                         "color": list(cm_obj.color),
+                        "description": cm_desc,
                     }
 
                 border_mod = None
                 bm_obj = self.board.border_modifiers.get((col_x, row_y))
                 if bm_obj:
+                    from modifiers import BORDER_MODIFIERS
+                    bm_desc = BORDER_MODIFIERS.get(bm_obj.effect, {}).get("description", "")
                     border_mod = {
                         "name": bm_obj.name,
                         "effect": bm_obj.effect,
                         "color": list(bm_obj.border_color),
+                        "description": bm_desc,
                     }
 
                 row.append({
@@ -710,13 +779,16 @@ class AutoBattler:
         # Roster info
         roster_data = []
         for p in self.roster:
-            mods = [{"name": m.name, "effect": m.effect} for m in p.modifiers]
+            mods = [{"name": m.name, "effect": m.effect, "description": m.description} for m in p.modifiers]
             roster_data.append({
                 "type": p.piece_type.value,
                 "team": p.team.value,
                 "placed": p in self.placed,
                 "alive": p.alive,
                 "modifiers": mods,
+                "hp": p.hp,
+                "maxHp": p.max_hp,
+                "attack": p.attack,
             })
 
         # Selected piece info
@@ -757,6 +829,7 @@ class AutoBattler:
             "tarotSlots": self.tarot_slots,
             "artifactSlots": self.artifact_slots,
             "seed": self.seed,
+            "activeSynergies": get_synergy_display_data(self.active_synergies),
         }
 
         # Phase-specific data
@@ -843,6 +916,10 @@ class AutoBattler:
             p.alive = True
             p.has_moved = False
             p.cell_modifier = None  # strip absorbed cell mods
+            p.hp = p.max_hp  # reset HP to full each wave
+
+        # Check synergies at wave start
+        self.active_synergies = check_synergies(self.roster, Team.PLAYER)
 
         # Restore owned cell modifiers to their origin positions on board
         for cm in self.cell_modifiers:
@@ -885,8 +962,14 @@ class AutoBattler:
         pool = [PieceType.PAWN, PieceType.PAWN, PieceType.PAWN, PieceType.KNIGHT]
         if self.wave >= 2:
             pool.extend([PieceType.BISHOP, PieceType.KNIGHT])
+        if self.wave >= 3:
+            pool.extend([PieceType.BOMB, PieceType.KING_RAT])
         if self.wave >= 4:
-            pool.extend([PieceType.ROOK, PieceType.QUEEN])
+            pool.extend([PieceType.ROOK, PieceType.QUEEN, PieceType.LEECH, PieceType.PARASITE])
+        if self.wave >= 5:
+            pool.extend([PieceType.GHOST, PieceType.MIMIC, PieceType.SUMMONER])
+        if self.wave >= 6:
+            pool.extend([PieceType.PHOENIX, PieceType.GAMBLER, PieceType.VOID])
 
         used = set()
         for _ in range(num_enemies):
@@ -959,7 +1042,7 @@ class AutoBattler:
                     used.add((ex, ey))
                     break
 
-    def _calculate_elo(self) -> int:
+    def _calculate_elo(self, cash_out: bool = False) -> int:
         """Calculate ELO earned at tournament end."""
         stats = self.tournament_stats
         bosses = int(stats["bosses_beaten"])
@@ -974,7 +1057,10 @@ class AutoBattler:
 
         # Penalty for not clearing
         if bosses < len(self.boss_sequence):
-            total *= 0.25
+            if cash_out:
+                total *= 0.333  # Cash out: 1/3 earnings
+            else:
+                total *= 0.25   # Loss penalty: 1/4 earnings
 
         return int(total)
 
@@ -1367,25 +1453,47 @@ class AutoBattler:
 
     def _execute_player_move(self, piece: Piece, mx: int, my: int) -> None:
         """Execute the player's chosen move, log it, then auto-step enemy."""
+        old_x, old_y = piece.x, piece.y
         target = self.board.get_piece_at(mx, my)
         if target and target.team != piece.team:
             target_type = target.piece_type
-            self.board.move_piece(piece, mx, my, rng=self.rng)
+            target_hp_before = target.hp
+            captured = self.board.move_piece(piece, mx, my, rng=self.rng,
+                                             active_synergies=self.active_synergies)
             self._check_anchor_chain()
-            # The Pawn: pawns that capture promote to the killed piece type
-            if (self._has_tarot("the_pawn") and piece.alive
-                    and piece.piece_type == PieceType.PAWN
-                    and target_type != PieceType.PAWN):
-                piece.piece_type = target_type
-                self.battle_log.append(f"Pawn promotes to {target_type.value}!")
-            log = f"Player {piece.piece_type.value} captures {target.piece_type.value}!"
-            self._trigger_shake(0.3)
-            sx, sy = self._board_to_screen(mx, my)
-            self.particles.spawn("capture_burst", sx, sy, color=renderer.FG_PLAYER)
+
+            if captured:
+                # The Pawn: pawns that capture promote to the killed piece type
+                if (self._has_tarot("the_pawn") and piece.alive
+                        and piece.piece_type == PieceType.PAWN
+                        and target_type != PieceType.PAWN):
+                    piece.piece_type = target_type
+                    self.battle_log.append(f"Pawn promotes to {target_type.value}!")
+                log = f"Player {piece.piece_type.value} kills {target_type.value}!"
+                self._trigger_shake(0.3)
+                sx, sy = self._board_to_screen(mx, my)
+                self.particles.spawn("capture_burst", sx, sy, color=renderer.FG_PLAYER)
+                # Process on-death abilities
+                death_msgs = self.board.process_on_death(target, piece, self.rng,
+                                                          self.active_synergies)
+                self.battle_log.extend(death_msgs)
+            else:
+                # Bounce-back: target survived
+                dmg = target_hp_before - target.hp
+                log = f"Player {piece.piece_type.value} hits {target_type.value} for {dmg} (HP:{target.hp}/{target.max_hp}) — bounced back"
+
+            # Process mirror moves
+            mirror_msgs = self.board.process_mirror_moves(piece, old_x, old_y, self.rng,
+                                                           self.active_synergies)
+            self.battle_log.extend(mirror_msgs)
         else:
             piece.x, piece.y = mx, my
             piece.has_moved = True
             log = f"Player {piece.piece_type.value} moves"
+            # Process mirror moves for non-capture moves too
+            mirror_msgs = self.board.process_mirror_moves(piece, old_x, old_y, self.rng,
+                                                           self.active_synergies)
+            self.battle_log.extend(mirror_msgs)
 
         self.battle_log.append(log)
         if len(self.battle_log) > 14:
@@ -1422,6 +1530,11 @@ class AutoBattler:
 
     def _enemy_step(self) -> None:
         """Execute one AI enemy turn, then switch back to player."""
+        # Process turn-start abilities for enemy
+        ability_msgs = self.board.process_turn_start_abilities(Team.ENEMY, self.rng,
+                                                                self.active_synergies)
+        self.battle_log.extend(ability_msgs)
+
         pieces = self.board.get_team_pieces(Team.ENEMY)
         if not pieces:
             self._end_battle()
@@ -1431,20 +1544,32 @@ class AutoBattler:
             Team.ENEMY, self.board, rng=self.rng,
             excluded=self._prev_positions,
             piece_streaks=self._piece_noncapture_streak,
+            active_synergies=self.active_synergies,
         )
 
         if result:
             best_piece, mx, my = result
+            old_x, old_y = best_piece.x, best_piece.y
             target = self.board.get_piece_at(mx, my)
             is_capture = target and target.team != best_piece.team
             self._record_move(best_piece, best_piece.x, best_piece.y, captured=bool(is_capture))
             if is_capture:
-                self.board.move_piece(best_piece, mx, my, rng=self.rng)
+                target_type = target.piece_type
+                target_hp_before = target.hp
+                captured = self.board.move_piece(best_piece, mx, my, rng=self.rng,
+                                                  active_synergies=self.active_synergies)
                 self._check_anchor_chain()
-                log = f"Enemy {best_piece.piece_type.value} captures {target.piece_type.value}!"
-                self._trigger_shake(0.3)
-                sx, sy = self._board_to_screen(mx, my)
-                self.particles.spawn("capture_burst", sx, sy, color=renderer.FG_ENEMY)
+                if captured:
+                    log = f"Enemy {best_piece.piece_type.value} kills {target_type.value}!"
+                    self._trigger_shake(0.3)
+                    sx, sy = self._board_to_screen(mx, my)
+                    self.particles.spawn("capture_burst", sx, sy, color=renderer.FG_ENEMY)
+                    death_msgs = self.board.process_on_death(target, best_piece, self.rng,
+                                                              self.active_synergies)
+                    self.battle_log.extend(death_msgs)
+                else:
+                    dmg = target_hp_before - target.hp
+                    log = f"Enemy {best_piece.piece_type.value} hits {target_type.value} for {dmg} (HP:{target.hp}) — bounced"
             else:
                 old_type = best_piece.piece_type
                 best_piece.x, best_piece.y = mx, my
@@ -1455,20 +1580,40 @@ class AutoBattler:
                     self.particles.spawn("capture_burst", sx, sy, color=(255, 100, 100))
                 else:
                     log = f"Enemy {best_piece.piece_type.value} moves"
+            # Mirror moves
+            mirror_msgs = self.board.process_mirror_moves(best_piece, old_x, old_y, self.rng,
+                                                           self.active_synergies)
+            self.battle_log.extend(mirror_msgs)
         else:
-            log = "Enemy pieces stuck"
+            # Stuck pieces take 1 damage each turn from attrition
+            stuck_pieces = self.board.get_team_pieces(Team.ENEMY)
+            for sp in stuck_pieces:
+                sp.hp -= 1
+                if sp.hp <= 0:
+                    sp.alive = False
+            self.board.pieces = [p for p in self.board.pieces if p.alive]
+            killed = len(stuck_pieces) - self.board.count_alive(Team.ENEMY)
+            if killed > 0:
+                log = f"Enemy pieces stuck — {killed} crushed!"
+            else:
+                log = "Enemy pieces stuck — taking attrition damage"
 
         self.battle_log.append(log)
         if len(self.battle_log) > 14:
             self.battle_log = self.battle_log[-14:]
         self.message = log
 
+        # Process turn-start abilities for player (start of player's next turn)
+        player_ability_msgs = self.board.process_turn_start_abilities(Team.PLAYER, self.rng,
+                                                                       self.active_synergies)
+        self.battle_log.extend(player_ability_msgs)
+
         self.battle_player_turn = True
         self.battle_turn += 1
 
         if self.board.count_alive(Team.PLAYER) == 0 or self.board.count_alive(Team.ENEMY) == 0:
             self._end_battle()
-        elif self.battle_turn > 50:
+        elif self.battle_turn > 20:
             self.battle_log.append("Stalemate!")
             self._end_battle()
 
@@ -1494,6 +1639,11 @@ class AutoBattler:
     def _battle_step(self) -> None:
         team = Team.PLAYER if self.battle_player_turn else Team.ENEMY
 
+        # Process turn-start abilities
+        ability_msgs = self.board.process_turn_start_abilities(team, self.rng,
+                                                                self.active_synergies)
+        self.battle_log.extend(ability_msgs)
+
         pieces = self.board.get_team_pieces(team)
         if not pieces:
             self._end_battle()
@@ -1503,22 +1653,33 @@ class AutoBattler:
             team, self.board, rng=self.rng,
             excluded=self._prev_positions,
             piece_streaks=self._piece_noncapture_streak,
+            active_synergies=self.active_synergies,
         )
 
         if result:
             best_piece, mx, my = result
+            old_x, old_y = best_piece.x, best_piece.y
             target = self.board.get_piece_at(mx, my)
             is_capture = target and target.team != best_piece.team
             self._record_move(best_piece, best_piece.x, best_piece.y, captured=bool(is_capture))
             if is_capture:
-                self.board.move_piece(best_piece, mx, my, rng=self.rng)
+                target_type = target.piece_type
+                target_hp_before = target.hp
+                captured = self.board.move_piece(best_piece, mx, my, rng=self.rng,
+                                                  active_synergies=self.active_synergies)
                 self._check_anchor_chain()
-                log = f"{team.value} {best_piece.piece_type.value} captures {target.piece_type.value}!"
-                # Visual feedback: shake + capture burst
-                self._trigger_shake(0.3)
-                sx, sy = self._board_to_screen(mx, my)
-                cap_color = renderer.FG_PLAYER if best_piece.team == Team.PLAYER else renderer.FG_ENEMY
-                self.particles.spawn("capture_burst", sx, sy, color=cap_color)
+                if captured:
+                    log = f"{team.value} {best_piece.piece_type.value} kills {target_type.value}!"
+                    self._trigger_shake(0.3)
+                    sx, sy = self._board_to_screen(mx, my)
+                    cap_color = renderer.FG_PLAYER if best_piece.team == Team.PLAYER else renderer.FG_ENEMY
+                    self.particles.spawn("capture_burst", sx, sy, color=cap_color)
+                    death_msgs = self.board.process_on_death(target, best_piece, self.rng,
+                                                              self.active_synergies)
+                    self.battle_log.extend(death_msgs)
+                else:
+                    dmg = target_hp_before - target.hp
+                    log = f"{team.value} {best_piece.piece_type.value} hits {target_type.value} for {dmg} (HP:{target.hp}) — bounced"
             else:
                 old_type = best_piece.piece_type
                 best_piece.x, best_piece.y = mx, my
@@ -1529,8 +1690,23 @@ class AutoBattler:
                     self.particles.spawn("capture_burst", sx, sy, color=(255, 220, 100))
                 else:
                     log = f"{team.value} {best_piece.piece_type.value} moves"
+            # Mirror moves
+            mirror_msgs = self.board.process_mirror_moves(best_piece, old_x, old_y, self.rng,
+                                                           self.active_synergies)
+            self.battle_log.extend(mirror_msgs)
         else:
-            log = f"{team.value} pieces stuck"
+            # Stuck pieces take 1 damage each turn from attrition
+            stuck_pieces = self.board.get_team_pieces(team)
+            for sp in stuck_pieces:
+                sp.hp -= 1
+                if sp.hp <= 0:
+                    sp.alive = False
+            self.board.pieces = [p for p in self.board.pieces if p.alive]
+            killed = len(stuck_pieces) - self.board.count_alive(team)
+            if killed > 0:
+                log = f"{team.value} pieces stuck — {killed} crushed!"
+            else:
+                log = f"{team.value} pieces stuck — taking attrition damage"
 
         self.battle_log.append(log)
         if len(self.battle_log) > 14:
@@ -1543,7 +1719,7 @@ class AutoBattler:
 
         if self.board.count_alive(Team.PLAYER) == 0 or self.board.count_alive(Team.ENEMY) == 0:
             self._end_battle()
-        elif self.battle_turn > 50:
+        elif self.battle_turn > 20:
             self.battle_log.append("Stalemate!")
             self._end_battle()
 
@@ -1604,9 +1780,11 @@ class AutoBattler:
                 else:
                     self.wave_in_round += 1
         else:
+            self.losses += 1
             self.gold += 1  # consolation gold for draw
-            self.message = "Draw! (+1g)"
-            self.battle_log.append("=== DRAW === (+1g)")
+            self.message = "Draw! -1 life (+1g)"
+            self.battle_log.append("=== DRAW === -1 life (+1g)")
+            self._trigger_flash((200, 150, 40))
             if self.tournament:
                 self.tournament_stats["gold_earned"] += 1
                 self.wave_in_round += 1
@@ -1624,6 +1802,22 @@ class AutoBattler:
         else:
             self.phase = "result"
         self._start_transition()
+
+    def _cash_out(self) -> None:
+        """Cash out of tournament early for 1/3 ELO instead of 1/4 penalty."""
+        self.elo_earned = self._calculate_elo(cash_out=True)
+
+        if self.save_data:
+            self.save_data.elo += self.elo_earned
+            self.save_data.stats["tournaments_completed"] = self.save_data.stats.get("tournaments_completed", 0) + 1
+            self.save_data.stats["total_elo_earned"] = self.save_data.stats.get("total_elo_earned", 0) + self.elo_earned
+            self.save_data.stats["bosses_beaten"] = self.save_data.stats.get("bosses_beaten", 0) + int(self.tournament_stats["bosses_beaten"])
+
+            import save_data as sd_module
+            sd_module.save(self.save_data)
+
+        sd.clear_run()
+        self.phase = "tournament_end"
 
     def _finish_tournament(self, won: bool) -> None:
         """End the tournament, calculate ELO, save results."""
@@ -1663,9 +1857,13 @@ class AutoBattler:
 
         pool = [PieceType.PAWN, PieceType.KNIGHT, PieceType.BISHOP]
         if self.wave >= 3:
-            pool.append(PieceType.ROOK)
+            pool.extend([PieceType.ROOK, PieceType.BOMB, PieceType.LEECH, PieceType.KING_RAT])
+        if self.wave >= 4:
+            pool.extend([PieceType.MIMIC, PieceType.PARASITE, PieceType.SUMMONER])
         if self.wave >= 5:
-            pool.append(PieceType.QUEEN)
+            pool.extend([PieceType.QUEEN, PieceType.GHOST, PieceType.PHOENIX, PieceType.GAMBLER])
+        if self.wave >= 6:
+            pool.extend([PieceType.ANCHOR_PIECE, PieceType.MIRROR_PIECE, PieceType.VOID])
 
         for _ in range(3):
             pt = self.rng.choice(pool)
@@ -1690,6 +1888,22 @@ class AutoBattler:
                 "desc": "Combine 2 Knights -> 1 Rook",
             })
 
+        leech_count = sum(1 for p in self.roster if p.piece_type == PieceType.LEECH)
+        if leech_count >= 2:
+            self.draft_options.append({
+                "type": "combine", "from": PieceType.LEECH,
+                "to": PieceType.GAMBLER, "count": 2,
+                "desc": "Combine 2 Leeches -> 1 Gambler",
+            })
+
+        king_rat_count = sum(1 for p in self.roster if p.piece_type == PieceType.KING_RAT)
+        if king_rat_count >= 2:
+            self.draft_options.append({
+                "type": "combine", "from": PieceType.KING_RAT,
+                "to": PieceType.VOID, "count": 2,
+                "desc": "Combine 2 King Rats -> 1 Void",
+            })
+
         self.draft_options.append({"type": "skip", "desc": "Skip -> Next wave"})
 
     # --- Tarot / Artifact helpers ---
@@ -1705,6 +1919,10 @@ class AutoBattler:
     def _artifact_count(self, effect: str) -> int:
         """Count how many copies of an artifact the player holds."""
         return sum(1 for a in self.artifacts if a["effect"] == effect)
+
+    def _has_synergy(self, effect: str) -> bool:
+        """Check if a synergy is currently active."""
+        return effect in self.active_synergies
 
     def _apply_wave_start_effects(self) -> None:
         """Apply tarot and artifact passive effects at wave start."""

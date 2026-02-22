@@ -38,6 +38,10 @@
           <div class="panel-label">Artifacts</div>
           <div id="artifact-items"></div>
         </div>
+        <div id="synergy-list" class="panel-section">
+          <div class="panel-label">Synergies</div>
+          <div id="synergy-items"></div>
+        </div>
       </div>
 
       <div id="board-container">
@@ -156,10 +160,58 @@
     <h2>ELO Shop</h2>
     <div id="elo-balance" class="gold"></div>
     <div id="elo-shop-cards"></div>
+    <div id="elo-shop-purchase-area">
+      <button class="action-btn" id="elo-purchase-btn">Select an item</button>
+    </div>
     <div id="elo-shop-message" class="phase-message"></div>
-    <div class="overlay-hint">Left/Right to browse, ENTER to buy, ESC to return to menu</div>
+    <div class="overlay-hint">Click to select, ENTER to buy, ESC to return</div>
   </div>
 
+  <!-- Options overlay -->
+  <div id="options-overlay" class="overlay-hidden">
+    <div class="options-backdrop"></div>
+    <div class="options-panel">
+      <h2>Options</h2>
+      <div class="options-section">
+        <div class="options-label">Battle Speed</div>
+        <div class="speed-slider">
+          <button class="speed-btn" id="speed-down">-</button>
+          <span id="speed-value">400ms</span>
+          <button class="speed-btn" id="speed-up">+</button>
+        </div>
+      </div>
+      <div class="options-section">
+        <div class="options-label">Particles</div>
+        <button class="toggle-btn" id="particles-toggle">ON</button>
+      </div>
+      <div class="options-buttons">
+        <button class="options-btn" id="opt-chessticon">Chessticon</button>
+        <button class="options-btn" id="opt-resume">Resume</button>
+        <button class="options-btn" id="opt-cashout" style="display:none">Cash Out (1/3 ELO)</button>
+        <button class="options-btn quit" id="opt-quit">Quit to Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chessticon codex overlay -->
+  <div id="chessticon-overlay" class="overlay-hidden">
+    <div class="options-backdrop"></div>
+    <div class="chessticon-panel">
+      <h2>Chessticon</h2>
+      <div class="chessticon-tabs">
+        <button class="chessticon-tab active" data-tab="pieces">Pieces</button>
+        <button class="chessticon-tab" data-tab="modifiers">Modifiers</button>
+        <button class="chessticon-tab" data-tab="tarots">Tarots</button>
+        <button class="chessticon-tab" data-tab="artifacts">Artifacts</button>
+        <button class="chessticon-tab" data-tab="synergies">Synergies</button>
+      </div>
+      <div id="chessticon-content" class="codex-grid"></div>
+      <button class="options-btn" id="codex-back">Back</button>
+    </div>
+  </div>
+
+  <div id="tooltip"></div>
+  <script src="chessticon.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
