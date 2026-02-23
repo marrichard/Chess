@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chess Roguelike</title>
   <link rel="stylesheet" href="game.css">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="bg-effects"></div>
@@ -47,7 +48,15 @@
       </div>
 
       <div id="board-container">
-        <div id="board"></div>
+        <div id="board-frame">
+          <div id="board-coords-top" class="board-coords horizontal">
+            <span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span>
+          </div>
+          <div id="board-coords-left" class="board-coords vertical">
+            <span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+          </div>
+          <div id="board"></div>
+        </div>
       </div>
 
       <div id="right-panel">
