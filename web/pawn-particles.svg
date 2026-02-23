@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="none">
+  <!-- 14 individually-rotated chess pawn silhouettes -->
+  <g transform="translate(80,60) rotate(-15,15,23)" fill="rgba(106,170,48,0.20)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(400,40) rotate(12,15,23)" fill="rgba(221,184,120,0.17)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(780,75) rotate(24,15,23)" fill="rgba(232,192,96,0.16)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(1150,55) rotate(-8,15,23)" fill="rgba(106,170,48,0.14)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(1480,80) rotate(16,15,23)" fill="rgba(221,184,120,0.15)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(180,330) rotate(-7,15,23)" fill="rgba(106,170,48,0.18)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(620,290) rotate(20,15,23)" fill="rgba(221,184,120,0.16)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(1020,360) rotate(-22,15,23)" fill="rgba(232,192,96,0.15)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(1380,310) rotate(6,15,23)" fill="rgba(106,170,48,0.13)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(90,620) rotate(10,15,23)" fill="rgba(106,170,48,0.15)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(480,580) rotate(-12,15,23)" fill="rgba(221,184,120,0.18)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(870,650) rotate(22,15,23)" fill="rgba(232,192,96,0.17)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(1260,600) rotate(-18,15,23)" fill="rgba(221,184,120,0.14)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+  <g transform="translate(340,790) rotate(-5,15,23)" fill="rgba(106,170,48,0.19)">
+    <circle cx="15" cy="8" r="7"/><polygon points="8,15 22,15 26,38 4,38"/><rect x="2" y="38" width="26" height="8"/>
+  </g>
+</svg>
