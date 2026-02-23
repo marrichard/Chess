@@ -9,7 +9,7 @@ const PieceRenderer = {
 
   // Size presets in px
   SIZES: {
-    board: 40,
+    board: 56,
     roster: 28,
     shop: 36,
     draft: 44,

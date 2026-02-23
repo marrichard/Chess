@@ -8,6 +8,7 @@ continue_run.json
 
 # Screenshots / debug images
 *.png
+!web/sprites/*.png
 
 # IDE
 .vscode/
