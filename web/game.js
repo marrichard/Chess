@@ -1493,7 +1493,7 @@ function renderRoster(state) {
 
     const label = document.createElement('span');
     label.className = 'piece-label';
-    let labelText = r.type;
+    let labelText = pieceDisplayName(r.type);
     if (r.modifiers && r.modifiers.length > 0) {
       labelText += ' [' + r.modifiers.map(m => m.effect[0].toUpperCase()).join('') + ']';
     }
@@ -1573,85 +1573,127 @@ function renderShop(state, animate) {
     shopBuilt = true;
     container.innerHTML = '';
 
+    let itemIndex = 0;
     for (let ri = 0; ri < rows.length; ri++) {
       const row = rows[ri];
-      const rowDiv = document.createElement('div');
 
-      const label = document.createElement('div');
-      label.className = 'shop-row-label';
-      label.style.color = 'rgb(' + row.color.join(',') + ')';
-      label.textContent = row.label;
-      rowDiv.appendChild(label);
+      // Shelf wrapper
+      const shelf = document.createElement('div');
+      shelf.className = 'shop-shelf';
 
+      // Category label tag
+      const tag = document.createElement('div');
+      tag.className = 'shelf-label-tag';
+      tag.style.color = 'rgb(' + row.color.join(',') + ')';
+      tag.textContent = row.label;
+      shelf.appendChild(tag);
+
+      // Plank container
+      const plank = document.createElement('div');
+      plank.className = 'shelf-plank';
+
+      // Items row
       const itemsDiv = document.createElement('div');
-      itemsDiv.className = 'shop-row-items';
+      itemsDiv.className = 'shelf-items';
 
       for (let ci = 0; ci < row.items.length; ci++) {
         const item = row.items[ci];
-        const card = document.createElement('div');
-        card.className = 'shop-card' + (animate ? ' card-enter' : '');
-        if (animate) card.style.animationDelay = ((ri * row.items.length + ci) * 50) + 'ms';
-        card.dataset.shopRi = ri;
-        card.dataset.shopCi = ci;
+        const el = document.createElement('div');
+        el.className = 'shelf-item';
+        if (animate) el.style.setProperty('--i', itemIndex);
+        el.dataset.shopRi = ri;
+        el.dataset.shopCi = ci;
+        itemIndex++;
 
         // Rarity class
         if (item.rarity && item.rarity !== 'common') {
-          card.classList.add('rarity-' + item.rarity);
+          el.classList.add('rarity-' + item.rarity);
         }
         // Sell item styling
         if (item.cost < 0 || item.type === 'sell_piece') {
-          card.classList.add('sell-item');
+          el.classList.add('sell-item');
         }
 
-        const rarityBadge = (item.rarity && item.rarity !== 'common')
-          ? '<span class="rarity-badge ' + item.rarity + '">' + esc(item.rarity) + '</span>'
-          : '';
         const costDisplay = (item.cost < 0)
           ? '+' + Math.abs(item.cost) + 'g'
           : item.cost + 'g';
 
-        card.innerHTML =
-          rarityBadge +
-          '<span class="shop-card-icon" style="color:rgb(' + item.color.join(',') + ')">' + esc(item.icon) + '</span>' +
-          '<span class="shop-card-name">' + esc(item.name) + '</span>' +
-          '<span class="shop-card-desc">' + esc(item.description) + '</span>' +
-          '<span class="shop-card-cost">' + costDisplay + '</span>';
+        // Glow disc (behind icon, for rarity)
+        const glow = document.createElement('div');
+        glow.className = 'shelf-item-glow';
+        el.appendChild(glow);
+
+        // Icon
+        const icon = document.createElement('span');
+        icon.className = 'shelf-item-icon';
+        icon.style.color = 'rgb(' + item.color.join(',') + ')';
+        icon.textContent = item.icon;
+        el.appendChild(icon);
+
+        // Name
+        const name = document.createElement('span');
+        name.className = 'shelf-item-name';
+        name.textContent = item.name;
+        el.appendChild(name);
+
+        // Price
+        const price = document.createElement('span');
+        price.className = 'shelf-item-price';
+        price.textContent = costDisplay;
+        el.appendChild(price);
 
         // Tooltip
         if (item.description) {
           const ttCost = item.cost < 0 ? '+' + Math.abs(item.cost) + 'g' : item.cost + 'g';
-          attachTooltip(card, '<div class="tt-title">' + esc(item.name) + '</div><div class="tt-desc">' + esc(item.description) + '</div><div class="tt-mod">' + ttCost + '</div>');
+          attachTooltip(el, '<div class="tt-title">' + esc(item.name) + '</div><div class="tt-desc">' + esc(item.description) + '</div><div class="tt-mod">' + ttCost + '</div>');
         }
 
         // Hover selects, click confirms
         const capturedRi = ri;
         const capturedCi = ci;
-        card.addEventListener('mouseenter', () => {
+        el.addEventListener('mouseenter', () => {
           pywebview.api.set_selection(capturedRi, capturedCi).then(handleStateUpdate).catch(console.error);
         });
-        card.addEventListener('click', () => {
+        el.addEventListener('click', () => {
           pywebview.api.send_action('CONFIRM', -1, -1).then(handleStateUpdate).catch(console.error);
         });
 
-        itemsDiv.appendChild(card);
+        itemsDiv.appendChild(el);
       }
 
-      rowDiv.appendChild(itemsDiv);
-      container.appendChild(rowDiv);
+      plank.appendChild(itemsDiv);
+
+      // Wood plank surface
+      const surface = document.createElement('div');
+      surface.className = 'shelf-plank-surface';
+      plank.appendChild(surface);
+
+      // Wood plank edge
+      const edge = document.createElement('div');
+      edge.className = 'shelf-plank-edge';
+      plank.appendChild(edge);
+
+      // Shadow below plank
+      const shadow = document.createElement('div');
+      shadow.className = 'shelf-plank-shadow';
+      plank.appendChild(shadow);
+
+      shelf.appendChild(plank);
+      container.appendChild(shelf);
     }
   }
 
   // Update selection/affordability classes without rebuilding DOM
-  const cards = container.querySelectorAll('.shop-card');
-  cards.forEach((card) => {
-    const ri = parseInt(card.dataset.shopRi);
-    const ci = parseInt(card.dataset.shopCi);
+  const items = container.querySelectorAll('.shelf-item');
+  items.forEach((el) => {
+    const ri = parseInt(el.dataset.shopRi);
+    const ci = parseInt(el.dataset.shopCi);
     const row = rows[ri];
     if (!row) return;
     const item = row.items[ci];
     if (!item) return;
-    card.classList.toggle('selected', ri === state.shopRow && ci === state.shopCol);
-    card.classList.toggle('unaffordable', item.cost > 0 && state.gold < item.cost);
+    el.classList.toggle('selected', ri === state.shopRow && ci === state.shopCol);
+    el.classList.toggle('unaffordable', item.cost > 0 && state.gold < item.cost);
   });
 
   // Done button
@@ -1688,7 +1730,7 @@ function renderDraft(state, animate) {
 
       const card = document.createElement('div');
       card.className = 'draft-card' + (animate ? ' card-enter' : '');
-      if (animate) card.style.animationDelay = (i * 50) + 'ms';
+      card.style.setProperty('--i', i);
       card.dataset.draftIdx = i;
 
       let draftPieceType = opt.pieceType || (opt.type === 'combine' ? opt.to : null);
@@ -1703,11 +1745,9 @@ function renderDraft(state, animate) {
         card.classList.add('legendary-reveal');
       }
 
-      const draftRarityBadge = (opt.rarity && opt.rarity !== 'common')
-        ? '<span class="rarity-badge ' + opt.rarity + '">' + esc(opt.rarity) + '</span>'
-        : '';
+      const draftRarityClass = (opt.rarity && opt.rarity !== 'common') ? ' rarity-' + opt.rarity : '';
 
-      // Build card content
+      // Build icon element
       const iconSpan = document.createElement('span');
       iconSpan.className = 'draft-card-icon player-color';
       if (draftPieceType && typeof PieceRenderer !== 'undefined') {
@@ -1719,15 +1759,55 @@ function renderDraft(state, animate) {
         iconSpan.textContent = icon;
       }
 
-      card.innerHTML =
-        draftRarityBadge +
-        '<span class="draft-card-desc">' + esc(opt.desc) + '</span>';
-      // Insert icon before desc
-      card.insertBefore(iconSpan, card.querySelector('.draft-card-desc'));
+      // Build card structure: stripe + body (icon + desc)
+      const stripe = document.createElement('div');
+      stripe.className = 'card-rarity-stripe' + draftRarityClass;
 
-      // Tooltip
-      if (opt.desc) {
-        attachTooltip(card, '<div class="tt-title">' + esc(opt.type) + '</div><div class="tt-desc">' + esc(opt.desc) + '</div>');
+      const body = document.createElement('div');
+      body.className = 'card-body';
+      body.appendChild(iconSpan);
+
+      // Show piece name + ability on card face instead of "Draft a pawn"
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'draft-card-name';
+      if (opt.pieceType) nameSpan.textContent = pieceDisplayName(opt.pieceType);
+      else if (opt.to) nameSpan.textContent = pieceDisplayName(opt.to);
+      else nameSpan.textContent = opt.desc;
+      body.appendChild(nameSpan);
+
+      const descSpan = document.createElement('span');
+      descSpan.className = 'draft-card-desc';
+      if (opt.ability) {
+        descSpan.textContent = opt.ability;
+      } else if (opt.moveDesc) {
+        descSpan.textContent = opt.moveDesc;
+      } else {
+        descSpan.textContent = opt.desc;
+      }
+      body.appendChild(descSpan);
+
+      card.appendChild(stripe);
+      card.appendChild(body);
+
+      // Tooltip — show piece info (move, ability, stats) instead of internal type
+      {
+        let ttPieceName = '';
+        if (opt.pieceType) ttPieceName = pieceDisplayName(opt.pieceType);
+        else if (opt.to) ttPieceName = pieceDisplayName(opt.to);
+        const ttTitle = ttPieceName || esc(opt.desc);
+        let ttHtml = '<div class="tt-title">' + esc(ttTitle) + '</div>';
+        if (opt.rarity && opt.rarity !== 'common') {
+          ttHtml += '<div class="tt-rarity rarity-' + opt.rarity + '">' + opt.rarity.toUpperCase() + '</div>';
+        }
+        if (opt.moveDesc) ttHtml += '<div class="tt-move">' + esc(opt.moveDesc) + '</div>';
+        if (opt.ability) ttHtml += '<div class="tt-ability">' + esc(opt.ability) + '</div>';
+        if (opt.hp || opt.attack) {
+          ttHtml += '<div class="tt-stats">HP: ' + (opt.hp || 0) + '  ATK: ' + (opt.attack || 0) + '</div>';
+        }
+        if (opt.type === 'combine') {
+          ttHtml += '<div class="tt-desc">' + esc(opt.desc) + '</div>';
+        }
+        attachTooltip(card, ttHtml);
       }
 
       const idx = i;
@@ -1810,11 +1890,14 @@ function renderPieceMod(state) {
     card.appendChild(pmIcon);
     const pmName = document.createElement('span');
     pmName.className = 'piece-name';
-    pmName.textContent = r.type + (r.modifiers.length > 0 ? ' [' + r.modifiers.map(m => m.effect[0]).join('') + ']' : '');
+    pmName.textContent = pieceDisplayName(r.type) + (r.modifiers.length > 0 ? ' [' + r.modifiers.map(m => m.effect[0]).join('') + ']' : '');
     card.appendChild(pmName);
 
     // Tooltip
-    let pmTt = '<div class="tt-title">' + esc(r.type) + '</div>';
+    let pmTt = '<div class="tt-title">' + esc(pieceDisplayName(r.type)) + '</div>';
+    if (r.moveDesc) pmTt += '<div class="tt-move">' + esc(r.moveDesc) + '</div>';
+    if (r.ability) pmTt += '<div class="tt-ability">' + esc(r.ability) + '</div>';
+    if (r.hp || r.attack) pmTt += '<div class="tt-stats">HP: ' + r.hp + '/' + r.maxHp + '  ATK: ' + r.attack + '</div>';
     if (r.modifiers && r.modifiers.length > 0) {
       for (const m of r.modifiers) {
         pmTt += '<div class="tt-mod">' + esc(m.name);
@@ -2013,7 +2096,7 @@ function renderEloShop(state) {
 
       const card = document.createElement('div');
       card.className = 'elo-card card-enter';
-      card.style.animationDelay = (i * 30) + 'ms';
+      card.style.setProperty('--i', i);
       card.dataset.eloIdx = i;
 
       let descText = item.desc;

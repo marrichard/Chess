@@ -1146,10 +1146,22 @@ class AutoBattler:
                 if opt["type"] == "add":
                     d["pieceType"] = opt["piece_type"].value
                     d["rarity"] = opt.get("rarity", "common")
+                    info = PIECE_INFO.get(opt["piece_type"], {})
+                    stats = PIECE_STATS.get(opt["piece_type"], (0, 0))
+                    d["moveDesc"] = info.get("move", "")
+                    d["ability"] = info.get("ability", "")
+                    d["hp"] = stats[0]
+                    d["attack"] = stats[1]
                 elif opt["type"] == "combine":
                     d["from"] = opt["from"].value
                     d["to"] = opt["to"].value
                     d["count"] = opt["count"]
+                    info = PIECE_INFO.get(opt["to"], {})
+                    stats = PIECE_STATS.get(opt["to"], (0, 0))
+                    d["moveDesc"] = info.get("move", "")
+                    d["ability"] = info.get("ability", "")
+                    d["hp"] = stats[0]
+                    d["attack"] = stats[1]
                 draft_data.append(d)
             state["draftOptions"] = draft_data
             state["draftSelection"] = self.draft_selection

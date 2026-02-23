@@ -21,11 +21,24 @@
   --accent-red: #cc4444;
   --shadow-color: rgba(0, 0, 0, 0.6);
   --px: 3px;
+  /* Board dimensions — everything derives from this */
+  /* Subtract UI chrome: top bar, roster bar, message bar, padding */
+  --board-size: round(down, min(calc(100vh - 200px), 84vw, 680px), 8px);
+  --cell-size: calc(var(--board-size) / 8);
+  --piece-size: calc(var(--cell-size) * 0.9);
   /* Rarity colors */
   --rarity-common: rgb(180, 180, 180);
   --rarity-rare: rgb(80, 140, 255);
   --rarity-epic: rgb(180, 60, 255);
   --rarity-legendary: rgb(255, 200, 50);
+  /* Shelf wood colors */
+  --shelf-plank-light: #d4b070;
+  --shelf-plank-mid: #c8a264;
+  --shelf-plank-dark: #ba9458;
+  --shelf-edge-light: #885c38;
+  --shelf-edge-dark: #6c4628;
+  --shelf-frame-outer: #5c3a1e;
+  --shelf-frame-inner: #3a2210;
 }
 
 /* === Reset === */
@@ -163,6 +176,7 @@ body {
   justify-content: center;
   gap: 16px;
   padding: 8px 16px;
+  overflow: hidden;
 }
 
 /* --- Side panels --- */
@@ -269,9 +283,8 @@ body {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  /* Round down to nearest 8px so all cells are exactly equal */
-  width: round(down, min(84vh, 84vw, 680px), 8px);
-  height: round(down, min(84vh, 84vw, 680px), 8px);
+  width: var(--board-size);
+  height: var(--board-size);
   border: var(--px) solid #2a4a1a;
   border-radius: 0;
   overflow: visible;
@@ -397,8 +410,6 @@ body {
 
 /* --- Pieces --- */
 .piece {
-  width: 100%;
-  height: 100%;
   line-height: 1;
   z-index: 5;
   position: relative;
@@ -407,22 +418,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: min(7.3vh, 7.3vw, 60px);
+  font-size: calc(var(--piece-size) * 0.7);
 }
 
 /* Board SVGs/IMGs scale with cell size */
 .piece-svg-board {
-  width: 75%;
-  height: 75%;
-}
-
-/* Board fallback text fills cell */
-.piece-fallback.piece-svg-board {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: var(--piece-size);
+  height: var(--piece-size);
 }
 
 .piece.player { color: #5082ff; }
@@ -886,81 +888,295 @@ body {
   text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
 }
 
+/* --- Wooden shelf cabinet --- */
 #shop-rows {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0;
   width: 100%;
-  max-width: 800px;
+  max-width: 900px;
+  background: #12100a;
+  border: 6px solid var(--shelf-frame-outer);
+  outline: 3px solid var(--shelf-frame-inner);
+  outline-offset: -9px;
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.7),
+    6px 6px 0 0 var(--shadow-color);
+  position: relative;
+  padding: 14px 10px 6px;
+  animation: shelfCabinetAppear 350ms ease-out;
 }
 
-.shop-row-label {
-  font-size: 0.55rem;
+/* Top molding */
+#shop-rows::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  height: 8px;
+  background: linear-gradient(180deg, #8c6840 0%, var(--shelf-frame-outer) 60%, var(--shelf-frame-inner) 100%);
+  border-bottom: 2px solid var(--shelf-frame-inner);
+  z-index: 1;
+}
+
+/* Bottom molding */
+#shop-rows::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: -3px;
+  right: -3px;
+  height: 8px;
+  background: linear-gradient(0deg, #8c6840 0%, var(--shelf-frame-outer) 60%, var(--shelf-frame-inner) 100%);
+  border-top: 2px solid var(--shelf-frame-inner);
+  z-index: 1;
+}
+
+/* --- Each shelf row --- */
+.shop-shelf {
+  position: relative;
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+
+/* Category label tag */
+.shelf-label-tag {
+  display: inline-block;
+  font-size: 0.45rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: 8px;
-  color: var(--text-dim);
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  background: var(--shelf-frame-inner);
+  border: 2px solid var(--shelf-edge-light);
+  border-bottom-color: var(--shelf-edge-dark);
+  border-right-color: var(--shelf-edge-dark);
+  color: var(--accent-tan);
+  box-shadow: 1px 1px 0 var(--shadow-color);
 }
 
-.shop-row-items {
+/* Plank container */
+.shelf-plank {
+  position: relative;
+}
+
+/* Items row — items rest on plank */
+.shelf-items {
   display: flex;
-  gap: 12px;
+  gap: 6px;
   flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 6px 8px 2px;
+  min-height: 70px;
 }
 
-.shop-card {
-  width: 140px;
-  background: var(--bg-card);
-  border-top: var(--px) solid var(--bevel-light);
-  border-left: var(--px) solid var(--bevel-light);
-  border-bottom: var(--px) solid var(--bevel-dark);
-  border-right: var(--px) solid var(--bevel-dark);
-  border-radius: 0;
-  padding: 12px;
-  cursor: pointer;
-  transition: none;
+/* Plank surface — top of wood */
+.shelf-plank-surface {
+  height: 8px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 18px,
+      rgba(0,0,0,0.06) 18px, rgba(0,0,0,0.06) 19px
+    ),
+    linear-gradient(180deg,
+      var(--shelf-plank-light) 0%,
+      var(--shelf-plank-mid) 50%,
+      var(--shelf-plank-dark) 100%
+    );
+  border-top: 1px solid rgba(255, 220, 160, 0.25);
+}
+
+/* Plank front edge — 3D depth */
+.shelf-plank-edge {
+  height: 6px;
+  background: linear-gradient(180deg,
+    var(--shelf-edge-light) 0%,
+    var(--shelf-edge-dark) 100%
+  );
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+/* Shadow cast below shelf */
+.shelf-plank-shadow {
+  height: 10px;
+  background: linear-gradient(180deg,
+    rgba(0, 0, 0, 0.35) 0%,
+    transparent 100%
+  );
+}
+
+/* --- Shelf items --- */
+.shelf-item {
+  width: 86px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
   text-align: center;
-  box-shadow: 3px 3px 0 0 var(--shadow-color);
+  cursor: pointer;
+  position: relative;
+  padding: 4px 2px 3px;
+  border: 2px solid transparent;
+  border-radius: 0;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  animation: shelfItemAppear 300ms ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
 }
 
-.shop-card:hover {
-  background: var(--bg-card-hover);
-  border-top-color: var(--accent-green);
-  border-left-color: #4a8828;
-  transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0 0 var(--shadow-color);
+.shelf-item:hover {
+  transform: translateY(-6px);
+  z-index: 2;
 }
 
-.shop-card.selected {
-  border-top-color: var(--accent-gold);
-  border-left-color: var(--accent-gold);
-  box-shadow: 4px 4px 0 0 var(--shadow-color);
+.shelf-item:hover .shelf-item-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 8px rgba(106, 170, 48, 0.5));
 }
 
-.shop-card:active {
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 0 var(--shadow-color);
-}
-.shop-card:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2px; }
-.shop-card.unaffordable { opacity: 0.5; cursor: not-allowed; filter: saturate(0.5); }
-
-.shop-card-icon {
-  font-size: 1.6rem;
-  width: 2em;
-  text-align: center;
+.shelf-item.selected {
+  border-color: var(--accent-gold);
+  background: rgba(232, 192, 96, 0.08);
+  transform: translateY(-4px);
 }
 
-.shop-card-name { font-size: 0.65rem; font-weight: 400; color: var(--accent-tan); }
-.shop-card-desc { font-size: 0.5rem; color: var(--text-dim); }
-.shop-card-cost { font-size: 0.6rem; color: var(--accent-gold); }
+.shelf-item:active {
+  transform: translateY(0);
+}
+
+.shelf-item:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 1px;
+}
+
+.shelf-item.unaffordable {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: saturate(0.3) brightness(0.7);
+  animation: none;
+}
+
+.shelf-item.unaffordable:hover {
+  transform: none;
+}
+
+.shelf-item.unaffordable:hover .shelf-item-icon {
+  transform: none;
+  filter: none;
+}
+
+/* Rarity glow disc behind icon */
+.shelf-item-glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Icon */
+.shelf-item-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.12s ease, filter 0.12s ease;
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.5));
+}
+
+/* Name label */
+.shelf-item-name {
+  font-size: 0.45rem;
+  color: var(--accent-tan);
+  line-height: 1.2;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+  margin-top: 2px;
+}
+
+/* Price tag */
+.shelf-item-price {
+  font-size: 0.45rem;
+  color: var(--accent-gold);
+  font-family: 'Press Start 2P', monospace;
+  padding: 1px 6px;
+  border: 1px solid rgba(232, 192, 96, 0.35);
+  background: rgba(232, 192, 96, 0.1);
+  margin-top: 2px;
+  position: relative;
+  z-index: 1;
+  text-shadow: 1px 1px 0 rgba(80, 60, 10, 0.5);
+}
+
+/* --- Rarity glow effects --- */
+.shelf-item.rarity-rare .shelf-item-glow {
+  background: radial-gradient(circle, rgba(80, 140, 255, 0.35) 0%, transparent 70%);
+}
+.shelf-item.rarity-rare .shelf-item-icon {
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 6px rgba(80, 140, 255, 0.5));
+}
+
+.shelf-item.rarity-epic .shelf-item-glow {
+  background: radial-gradient(circle, rgba(180, 60, 255, 0.35) 0%, transparent 70%);
+}
+.shelf-item.rarity-epic .shelf-item-icon {
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 6px rgba(180, 60, 255, 0.5));
+}
+
+.shelf-item.rarity-legendary .shelf-item-glow {
+  background: radial-gradient(circle, rgba(255, 200, 50, 0.4) 0%, transparent 70%);
+  animation: legendaryGlowPulse 2s ease-in-out infinite alternate;
+}
+.shelf-item.rarity-legendary .shelf-item-icon {
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px rgba(255, 200, 50, 0.6));
+  animation: legendaryIconPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes legendaryGlowPulse {
+  0%   { transform: translateX(-50%) scale(1); opacity: 0.7; }
+  100% { transform: translateX(-50%) scale(1.15); opacity: 1; }
+}
+
+@keyframes legendaryIconPulse {
+  0%   { filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 0 6px rgba(255,200,50,0.4)); }
+  100% { filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.5)) drop-shadow(0 0 12px rgba(255,200,50,0.8)); }
+}
+
+/* --- Sell item on shelf --- */
+.shelf-item.sell-item .shelf-item-glow {
+  background: radial-gradient(circle, rgba(204, 68, 68, 0.25) 0%, transparent 70%);
+}
+.shelf-item.sell-item .shelf-item-price {
+  color: var(--accent-green);
+  border-color: rgba(106, 170, 48, 0.35);
+  background: rgba(106, 170, 48, 0.1);
+}
+
+/* --- Shelf animations --- */
+@keyframes shelfItemAppear {
+  0%   { opacity: 0; transform: translateY(20px); }
+  60%  { opacity: 1; transform: translateY(-3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shelfCabinetAppear {
+  0%   { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Idle sway — still used by draft cards */
+@keyframes cardSway {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
 
 /* ================================================================
    DRAFT
@@ -969,7 +1185,7 @@ body {
 #draft-view {
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 24px;
 }
 
 #draft-view h2 {
@@ -981,99 +1197,141 @@ body {
 
 #draft-cards {
   display: flex;
-  gap: 16px;
+  gap: 20px;
+  justify-content: center;
 }
 
+/* --- Balatro-inspired draft card --- */
 .draft-card {
-  width: 160px;
-  background: var(--bg-card);
-  border-top: var(--px) solid var(--bevel-light);
-  border-left: var(--px) solid var(--bevel-light);
-  border-bottom: var(--px) solid var(--bevel-dark);
-  border-right: var(--px) solid var(--bevel-dark);
+  width: 200px;
+  background: #1a2818;
+  border: 3px solid #2a3a22;
   border-radius: 0;
-  padding: 16px;
+  padding: 0;
   cursor: pointer;
-  transition: none;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
   text-align: center;
   box-shadow: 3px 3px 0 0 var(--shadow-color);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  animation: cardSway 3s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 120ms);
 }
 
 .draft-card:hover {
-  background: var(--bg-card-hover);
-  border-top-color: var(--accent-green);
-  border-left-color: #4a8828;
-  transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0 0 var(--shadow-color);
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(106, 170, 48, 0.25);
+  border-color: var(--accent-green);
+  z-index: 2;
 }
 
 .draft-card.selected {
-  border-top-color: var(--accent-gold);
-  border-left-color: var(--accent-gold);
-  box-shadow: 4px 4px 0 0 var(--shadow-color);
+  border-color: var(--accent-gold);
+  box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 10px rgba(232, 192, 96, 0.35);
+  transform: translateY(-2px);
 }
 
 .draft-card:active {
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  transform: translate(2px, 2px);
+  transform: translateY(2px) scale(0.98);
   box-shadow: 1px 1px 0 0 var(--shadow-color);
 }
 .draft-card:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2px; }
 
-.draft-card-icon { font-size: 2rem; }
-.draft-card-desc { font-size: 0.55rem; color: var(--text-dim); }
+/* Rarity stripe */
+.draft-card .card-rarity-stripe {
+  width: 100%;
+  height: 4px;
+  background: transparent;
+  flex-shrink: 0;
+}
+.draft-card .card-rarity-stripe.rarity-rare { background: var(--rarity-rare); }
+.draft-card .card-rarity-stripe.rarity-epic { background: var(--rarity-epic); }
+.draft-card .card-rarity-stripe.rarity-legendary {
+  background: linear-gradient(90deg, #e8a020, #ffd700, #e8a020);
+  animation: stripeShimmer 2s ease-in-out infinite;
+}
+
+@keyframes stripeShimmer {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.4); }
+}
+
+/* Draft card body */
+.draft-card .card-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 12px 14px;
+  flex: 1;
+}
+
+.draft-card-icon {
+  font-size: 3rem;
+  filter: drop-shadow(0 0 8px currentColor);
+  line-height: 1;
+}
+.draft-card-name { font-size: 0.65rem; font-weight: 400; color: var(--accent-tan); }
+.draft-card-desc { font-size: 0.55rem; color: var(--text-dim); line-height: 1.4; }
 
 /* ================================================================
    ACTION BUTTONS
    ================================================================ */
 
 .action-btn {
-  padding: 10px 28px;
-  background: var(--bg-card);
-  border-top: var(--px) solid var(--bevel-light);
-  border-left: var(--px) solid var(--bevel-light);
-  border-bottom: var(--px) solid var(--bevel-dark);
-  border-right: var(--px) solid var(--bevel-dark);
+  padding: 12px 36px;
+  background: #1a2818;
+  border: 3px solid var(--accent-green);
   border-radius: 0;
-  color: var(--text-main);
+  color: var(--accent-green);
   font-family: 'Press Start 2P', monospace;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   cursor: pointer;
-  transition: none;
   text-align: center;
-  margin-top: 12px;
+  margin-top: 16px;
   box-shadow: 3px 3px 0 0 var(--shadow-color);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  letter-spacing: 0.05em;
 }
 
 .action-btn:hover {
-  background: var(--bg-card-hover);
-  border-top-color: var(--accent-green);
-  border-left-color: #4a8828;
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 0 var(--shadow-color);
+  background: #243420;
+  transform: translateY(-2px);
+  box-shadow: 4px 5px 0 0 var(--shadow-color), 0 0 10px rgba(106, 170, 48, 0.2);
 }
 
 .action-btn:active {
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  transform: translate(2px, 2px);
+  transform: translateY(2px);
   box-shadow: 1px 1px 0 0 var(--shadow-color);
 }
 .action-btn:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2px; }
 
 .action-btn.selected {
-  border-top-color: var(--accent-gold);
-  border-left-color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+  background: #2a2418;
+  box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 8px rgba(232, 192, 96, 0.2);
+}
+
+/* Muted secondary action (skip button) */
+#draft-skip-btn {
+  border-color: var(--border-dim);
+  color: var(--text-dim);
+  background: var(--bg-card);
+  font-size: 0.6rem;
+  padding: 10px 24px;
+}
+#draft-skip-btn:hover {
+  border-color: var(--text-dim);
+  color: var(--text-main);
   background: var(--bg-card-hover);
+}
+#draft-skip-btn.selected {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
 }
 
 .phase-message {
@@ -1112,37 +1370,28 @@ body {
 .roster-select-card, .tarot-select-card {
   width: 100px;
   padding: 10px;
-  background: var(--bg-card);
-  border-top: var(--px) solid var(--bevel-light);
-  border-left: var(--px) solid var(--bevel-light);
-  border-bottom: var(--px) solid var(--bevel-dark);
-  border-right: var(--px) solid var(--bevel-dark);
+  background: #1a2818;
+  border: 3px solid #2a3a22;
   border-radius: 0;
   cursor: pointer;
-  transition: none;
   text-align: center;
   box-shadow: 2px 2px 0 0 var(--shadow-color);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .roster-select-card:hover, .tarot-select-card:hover {
-  background: var(--bg-card-hover);
-  border-top-color: var(--accent-green);
-  border-left-color: #4a8828;
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 0 var(--shadow-color);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 3px 5px 0 0 var(--shadow-color), 0 0 10px rgba(106, 170, 48, 0.2);
+  border-color: var(--accent-green);
 }
 
 .roster-select-card.selected, .tarot-select-card.selected {
-  border-top-color: var(--accent-gold);
-  border-left-color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  box-shadow: 2px 2px 0 0 var(--shadow-color), 0 0 8px rgba(232, 192, 96, 0.3);
 }
 
 .roster-select-card:active, .tarot-select-card:active {
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  transform: translate(1px, 1px);
+  transform: translateY(1px) scale(0.98);
   box-shadow: 1px 1px 0 0 var(--shadow-color);
 }
 
@@ -1194,42 +1443,34 @@ body {
 
 .elo-card {
   width: 150px;
-  background: var(--bg-card);
-  border-top: var(--px) solid var(--bevel-light);
-  border-left: var(--px) solid var(--bevel-light);
-  border-bottom: var(--px) solid var(--bevel-dark);
-  border-right: var(--px) solid var(--bevel-dark);
+  background: #1a2818;
+  border: 3px solid #2a3a22;
   border-radius: 0;
   padding: 14px;
   cursor: pointer;
-  transition: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   text-align: center;
   box-shadow: 3px 3px 0 0 var(--shadow-color);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .elo-card:hover {
-  background: var(--bg-card-hover);
-  border-top-color: var(--accent-green);
-  border-left-color: #4a8828;
-  transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0 0 var(--shadow-color);
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(106, 170, 48, 0.25);
+  border-color: var(--accent-green);
 }
 
 .elo-card.selected {
-  border-top-color: var(--accent-gold);
-  border-left-color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 10px rgba(232, 192, 96, 0.35);
+  transform: translateY(-2px);
 }
 
 .elo-card:active {
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  transform: translate(1px, 1px);
+  transform: translateY(2px) scale(0.98);
   box-shadow: 1px 1px 0 0 var(--shadow-color);
 }
 
@@ -1241,9 +1482,14 @@ body {
 }
 
 .elo-card.unaffordable {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
-  filter: saturate(0.5);
+  filter: saturate(0.3) brightness(0.7);
+}
+.elo-card.unaffordable:hover {
+  transform: none;
+  box-shadow: 3px 3px 0 0 var(--shadow-color);
+  border-color: #2a3a22;
 }
 
 .elo-card-icon { font-size: 1.6rem; }
@@ -1328,15 +1574,14 @@ body {
    ================================================================ */
 
 @media (max-width: 900px) {
+  :root { --board-size: round(down, min(calc(100vh - 200px), 72vw, 560px), 8px); }
   #left-panel, #right-panel { width: 160px; }
-  #board, #placement-board { width: round(down, min(72vh, 72vw, 560px), 8px); height: round(down, min(72vh, 72vw, 560px), 8px); }
-  /* Pieces scale automatically via min() — no override needed */
 }
 
 @media (max-width: 700px) {
+  :root { --board-size: round(down, min(calc(100vh - 200px), 85vw, 500px), 8px); }
   #left-panel { display: none; }
   #right-panel { display: none; }
-  #board, #placement-board { width: round(down, min(85vw, 85vh, 500px), 8px); height: round(down, min(85vw, 85vh, 500px), 8px); }
 }
 
 /* ================================================================
@@ -1754,18 +1999,18 @@ body {
   border-bottom: 2px solid #3a2a16;
 }
 
-/* === Card entrance animation === */
+/* === Card deal-in animation (Balatro-style bounce) === */
 .card-enter {
   opacity: 0;
-  transform: translateY(12px);
-  animation: cardEnterAnim 300ms steps(6) forwards;
+  transform: translateY(30px) scale(0.8);
+  animation: cardDealIn 400ms ease-out forwards;
+  animation-delay: calc(var(--i, 0) * 80ms);
 }
 
-@keyframes cardEnterAnim {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes cardDealIn {
+  0%   { opacity: 0; transform: translateY(30px) scale(0.8); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* === Floating damage numbers === */
@@ -1820,48 +2065,22 @@ body {
    RARITY SYSTEM
    ================================================================ */
 
-/* --- Rarity border on shop cards (bevel-style: top + left only) --- */
-.shop-card.rarity-rare {
-  border-top-color: rgba(80, 140, 255, 0.6);
-  border-left-color: rgba(80, 140, 255, 0.6);
-}
-.shop-card.rarity-epic {
-  border-top-color: rgba(180, 60, 255, 0.6);
-  border-left-color: rgba(180, 60, 255, 0.6);
-}
-.shop-card.rarity-legendary {
-  border-top-color: rgba(255, 200, 50, 0.8);
-  border-left-color: rgba(255, 200, 50, 0.8);
-  animation: legendaryShimmer 2s ease-in-out infinite alternate;
-}
-
-.shop-card.rarity-rare.selected {
-  border-top-color: var(--rarity-rare);
-  border-left-color: var(--rarity-rare);
-}
-.shop-card.rarity-epic.selected {
-  border-top-color: var(--rarity-epic);
-  border-left-color: var(--rarity-epic);
-}
-.shop-card.rarity-legendary.selected {
-  border-top-color: var(--rarity-legendary);
-  border-left-color: var(--rarity-legendary);
-}
-
-/* --- Rarity border on draft cards --- */
+/* --- Rarity glow on draft cards (via stripe, not border) --- */
 .draft-card.rarity-rare {
-  border-top-color: rgba(80, 140, 255, 0.6);
-  border-left-color: rgba(80, 140, 255, 0.6);
+  border-color: rgba(80, 140, 255, 0.3);
 }
 .draft-card.rarity-epic {
-  border-top-color: rgba(180, 60, 255, 0.6);
-  border-left-color: rgba(180, 60, 255, 0.6);
+  border-color: rgba(180, 60, 255, 0.3);
 }
 .draft-card.rarity-legendary {
-  border-top-color: rgba(255, 200, 50, 0.8);
-  border-left-color: rgba(255, 200, 50, 0.8);
-  animation: legendaryShimmer 2s ease-in-out infinite alternate;
+  border-color: rgba(255, 200, 50, 0.4);
+  animation: cardSway 3s ease-in-out infinite, legendaryShimmer 2s ease-in-out infinite alternate;
+  animation-delay: calc(var(--i, 0) * 120ms), 0ms;
 }
+
+.draft-card.rarity-rare.selected { border-color: var(--rarity-rare); }
+.draft-card.rarity-epic.selected { border-color: var(--rarity-epic); }
+.draft-card.rarity-legendary.selected { border-color: var(--rarity-legendary); }
 
 /* --- Rarity border on roster pieces --- */
 .roster-piece.rarity-rare {
@@ -1891,16 +2110,6 @@ body {
 .rarity-badge.rare      { color: var(--rarity-rare); }
 .rarity-badge.epic      { color: var(--rarity-epic); }
 .rarity-badge.legendary { color: var(--rarity-legendary); text-shadow: 2px 2px 0 rgba(100, 80, 0, 0.4); }
-
-/* --- Sell item styling --- */
-.shop-card.sell-item {
-  border-top-color: #993333;
-  border-left-color: #993333;
-  background: #1a0c08;
-}
-.shop-card.sell-item .shop-card-cost {
-  color: var(--accent-green);
-}
 
 /* --- Legendary shimmer animation --- */
 @keyframes legendaryShimmer {
@@ -2130,13 +2339,14 @@ body {
    ================================================================ */
 
 .legendary-reveal {
-  animation: legendary-bloom 0.6s ease-out;
+  animation: legendary-bloom 0.7s ease-out;
 }
 
 @keyframes legendary-bloom {
-  0%   { transform: scale(0.95); box-shadow: 3px 3px 0 0 var(--shadow-color); }
-  40%  { transform: scale(1.05); box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 20px rgba(255, 200, 50, 0.5); }
-  100% { transform: scale(1); box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 8px rgba(255, 200, 50, 0.2); }
+  0%   { transform: scale(0.8); box-shadow: 3px 3px 0 0 var(--shadow-color); filter: brightness(1); }
+  25%  { transform: scale(1.08); filter: brightness(2.5); box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 30px rgba(255, 255, 255, 0.6); }
+  50%  { transform: scale(1.02); filter: brightness(1.2); box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 20px rgba(255, 200, 50, 0.5); }
+  100% { transform: scale(1); filter: brightness(1); box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 8px rgba(255, 200, 50, 0.2); }
 }
 
 /* ================================================================
