@@ -167,12 +167,12 @@ body {
 
 /* --- Side panels --- */
 #left-panel, #right-panel {
-  width: 180px;
+  width: 210px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 100%;
+  align-self: stretch;
   overflow-y: auto;
 }
 
@@ -230,6 +230,7 @@ body {
 
 /* --- Board frame with coordinates --- */
 #board-frame {
+  position: relative;
   display: grid;
   grid-template-columns: 18px 1fr;
   grid-template-rows: 16px 1fr;
@@ -268,13 +269,38 @@ body {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  aspect-ratio: 1;
-  width: min(65vh, 65vw, 520px);
-  height: min(65vh, 65vw, 520px);
+  /* Round down to nearest 8px so all cells are exactly equal */
+  width: round(down, min(84vh, 84vw, 680px), 8px);
+  height: round(down, min(84vh, 84vw, 680px), 8px);
   border: var(--px) solid #2a4a1a;
   border-radius: 0;
   overflow: visible;
   box-shadow: 4px 4px 0 0 var(--shadow-color);
+}
+
+/* Glare overlay — radial highlight from top-left corner */
+#board-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse at 20% 15%,
+      rgba(255,255,255,0.16) 0%,
+      rgba(255,255,255,0.16) 8%,
+      rgba(255,255,255,0.08) 8%,
+      rgba(255,255,255,0.08) 20%,
+      transparent 20%,
+      transparent 100%
+    ),
+    linear-gradient(
+      160deg,
+      transparent 0%,   transparent 55%,
+      rgba(0,0,0,0.06) 55%, rgba(0,0,0,0.06) 75%,
+      rgba(0,0,0,0.12) 75%, rgba(0,0,0,0.12) 100%
+    );
+  pointer-events: none;
+  z-index: 10;
 }
 
 /* Board inside frame doesn't need its own border/shadow */
@@ -299,8 +325,12 @@ body {
 
 .cell:hover { filter: brightness(1.1); }
 
-.cell.light { background: #c8a264; }
-.cell.dark  { background: #7a5230; }
+.cell.light {
+  background: linear-gradient(180deg, #d4b070 0%, #c8a264 40%, #ba9458 100%);
+}
+.cell.dark {
+  background: linear-gradient(180deg, #885c38 0%, #7a5230 40%, #6c4628 100%);
+}
 
 /* Highlights */
 .cell.highlight-zone { background: rgba(0, 100, 0, 0.25); }
@@ -334,8 +364,7 @@ body {
 
 /* Cursor */
 .cell.cursor-active {
-  outline: 2px solid var(--accent-green);
-  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--accent-green);
   z-index: 3;
 }
 
@@ -368,12 +397,29 @@ body {
 
 /* --- Pieces --- */
 .piece {
-  font-size: 2.5rem;
+  width: 100%;
+  height: 100%;
   line-height: 1;
   z-index: 5;
   position: relative;
   transition: transform 200ms ease;
   text-shadow: 2px 2px 0 rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: min(7.3vh, 7.3vw, 60px);
+}
+
+/* Board SVGs/IMGs scale with cell size */
+.piece-svg-board {
+  width: 75%;
+  height: 75%;
+}
+
+/* Board fallback text fills cell */
+.piece-fallback.piece-svg-board {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1282,15 +1328,15 @@ body {
    ================================================================ */
 
 @media (max-width: 900px) {
-  #left-panel, #right-panel { width: 140px; }
-  #board, #placement-board { width: min(55vh, 55vw, 400px); height: min(55vh, 55vw, 400px); }
-  .piece { font-size: 2rem; }
+  #left-panel, #right-panel { width: 160px; }
+  #board, #placement-board { width: round(down, min(72vh, 72vw, 560px), 8px); height: round(down, min(72vh, 72vw, 560px), 8px); }
+  /* Pieces scale automatically via min() — no override needed */
 }
 
 @media (max-width: 700px) {
   #left-panel { display: none; }
   #right-panel { display: none; }
-  #board, #placement-board { width: min(85vw, 85vh, 500px); height: min(85vw, 85vh, 500px); }
+  #board, #placement-board { width: round(down, min(85vw, 85vh, 500px), 8px); height: round(down, min(85vw, 85vh, 500px), 8px); }
 }
 
 /* ================================================================
@@ -1936,7 +1982,7 @@ body {
   filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.5));
 }
 
-/* Size variants are set inline by pieceRenderer.js */
+/* Board pieces scale via CSS; other sizes set inline by pieceRenderer.js */
 .piece-fallback {
   pointer-events: none;
 }

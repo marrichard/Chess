@@ -40,12 +40,15 @@ const PieceRenderer = {
       return this._createFallback(pieceType, team, sizeClass);
     }
 
-    const size = this.SIZES[sizeClass] || 40;
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', svgData.viewBox || '0 0 64 64');
-    svg.setAttribute('width', size);
-    svg.setAttribute('height', size);
+    // Board pieces scale via CSS; others use fixed px sizes
+    if (sizeClass !== 'board') {
+      const size = this.SIZES[sizeClass] || 40;
+      svg.setAttribute('width', size);
+      svg.setAttribute('height', size);
+    }
     svg.classList.add('piece-svg', 'piece-svg-' + sizeClass);
     svg.style.display = 'block';
 
@@ -78,12 +81,15 @@ const PieceRenderer = {
   },
 
   _createImg(pieceType, team, sizeClass) {
-    const size = this.SIZES[sizeClass] || 40;
     const img = document.createElement('img');
     img.src = 'sprites/' + pieceType + '_' + team + '.png';
     img.alt = pieceType;
-    img.width = size;
-    img.height = size;
+    // Board pieces scale via CSS; others use fixed px sizes
+    if (sizeClass !== 'board') {
+      const size = this.SIZES[sizeClass] || 40;
+      img.width = size;
+      img.height = size;
+    }
     img.classList.add('piece-svg', 'piece-svg-' + sizeClass);
     img.style.display = 'block';
     img.onerror = () => {
@@ -100,13 +106,16 @@ const PieceRenderer = {
     span.textContent = (typeof pieceChar === 'function') ? pieceChar(pieceType, team) : '?';
     const teamColor = team === 'player' ? '#5082ff' : '#ff4646';
     span.style.color = teamColor;
-    const size = this.SIZES[sizeClass] || 40;
-    span.style.fontSize = Math.floor(size * 0.7) + 'px';
-    span.style.lineHeight = size + 'px';
+    // Board pieces scale via CSS; others use fixed px sizes
+    if (sizeClass !== 'board') {
+      const size = this.SIZES[sizeClass] || 40;
+      span.style.fontSize = Math.floor(size * 0.7) + 'px';
+      span.style.lineHeight = size + 'px';
+      span.style.width = size + 'px';
+      span.style.height = size + 'px';
+    }
     span.style.display = 'block';
     span.style.textAlign = 'center';
-    span.style.width = size + 'px';
-    span.style.height = size + 'px';
     return span;
   },
 };

@@ -28,6 +28,7 @@ def main() -> None:
         height=768,
         resizable=True,
         frameless=False,
+        min_size=(800, 600),
     )
     api.set_window(window)
     webview.start()  # blocks until window closed

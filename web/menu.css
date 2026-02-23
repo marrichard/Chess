@@ -1237,3 +1237,89 @@ h2 {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-green);
 }
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+/* Allow body to scroll vertically if content overflows */
+body {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Smaller screens — shrink title, fluid menu cards */
+@media (max-width: 900px) {
+  h1 {
+    font-size: 2.4rem;
+    letter-spacing: 0.3em;
+  }
+
+  .menu-cards {
+    width: min(460px, 90vw);
+  }
+
+  .difficulty-cards {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .master-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    max-width: 90vw;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 650px) {
+  h1 {
+    font-size: 1.6rem;
+    letter-spacing: 0.2em;
+  }
+
+  .menu-cards {
+    width: 90vw;
+  }
+
+  .menu-card {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .difficulty-card {
+    width: 180px;
+  }
+
+  .options-panel, .chessticon-panel, .achievements-panel {
+    min-width: 0;
+    width: 92vw;
+    padding: 18px 16px;
+  }
+}
+
+/* Short screens — prevent vertical clipping */
+@media (max-height: 700px) {
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 0.15em;
+  }
+
+  .elo-badge {
+    font-size: 0.7rem;
+    margin-bottom: 0.15em;
+  }
+
+  .menu-cards {
+    gap: 8px;
+    margin-bottom: 0.6em;
+  }
+
+  .menu-card {
+    padding: 10px 16px;
+  }
+
+  .difficulty-cards {
+    gap: 8px;
+    margin-bottom: 1em;
+  }
+}

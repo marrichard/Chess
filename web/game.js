@@ -1525,8 +1525,9 @@ function renderResult(state, animate) {
   const title = document.getElementById('result-title');
   const body = document.getElementById('result-body');
 
-  const won = state.wins > (oldState ? oldState.wins : 0);
-  const lost = state.losses > (oldState ? oldState.losses : 0);
+  const msg = (state.message || '').toLowerCase();
+  const won = msg.includes('victory');
+  const lost = msg.includes('defeat');
   title.textContent = won ? 'Victory!' : (lost ? 'Defeat' : 'Draw');
   title.style.color = won ? '#66ff88' : '#ff6666';
 
