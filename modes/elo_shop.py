@@ -53,6 +53,7 @@ class EloShop:
 
     def __init__(self, save_data: sd.SaveData) -> None:
         self.save_data = save_data
+        self.phase = "elo_shop"
         self.selection = 0
         self.message = ""
         # Show 4 items at a time, scroll offset

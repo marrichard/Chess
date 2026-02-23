@@ -1024,20 +1024,20 @@ body {
   animation-delay: calc(var(--i, 0) * 60ms);
 }
 
-.shelf-item:hover {
-  transform: translateY(-6px);
-  z-index: 2;
-}
-
-.shelf-item:hover .shelf-item-icon {
-  transform: scale(1.1);
-  filter: drop-shadow(0 0 8px rgba(106, 170, 48, 0.5));
+.shelf-item:hover:not(.selected):not(.unaffordable) {
+  /* No hover effect — mouseenter sets .selected immediately */
 }
 
 .shelf-item.selected {
   border-color: var(--accent-gold);
   background: rgba(232, 192, 96, 0.08);
-  transform: translateY(-4px);
+  transform: translateY(-6px);
+  z-index: 2;
+}
+
+.shelf-item.selected .shelf-item-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 8px rgba(106, 170, 48, 0.5));
 }
 
 .shelf-item:active {
@@ -1216,22 +1216,20 @@ body {
   box-shadow: 3px 3px 0 0 var(--shadow-color);
   position: relative;
   overflow: hidden;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: none;
   animation: cardSway 3s ease-in-out infinite;
   animation-delay: calc(var(--i, 0) * 120ms);
 }
 
-.draft-card:hover {
-  transform: translateY(-4px) scale(1.03);
-  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(106, 170, 48, 0.25);
-  border-color: var(--accent-green);
-  z-index: 2;
+.draft-card:hover:not(.selected) {
+  /* No hover effect — mouseenter sets .selected immediately */
 }
 
 .draft-card.selected {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(232, 192, 96, 0.3);
   border-color: var(--accent-gold);
-  box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 10px rgba(232, 192, 96, 0.35);
-  transform: translateY(-2px);
+  z-index: 2;
 }
 
 .draft-card:active {
@@ -1376,18 +1374,17 @@ body {
   cursor: pointer;
   text-align: center;
   box-shadow: 2px 2px 0 0 var(--shadow-color);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: none;
 }
 
-.roster-select-card:hover, .tarot-select-card:hover {
-  transform: translateY(-3px) scale(1.03);
-  box-shadow: 3px 5px 0 0 var(--shadow-color), 0 0 10px rgba(106, 170, 48, 0.2);
-  border-color: var(--accent-green);
+.roster-select-card:hover:not(.selected), .tarot-select-card:hover:not(.selected) {
+  /* No hover effect — mouseenter sets .selected immediately */
 }
 
 .roster-select-card.selected, .tarot-select-card.selected {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 3px 5px 0 0 var(--shadow-color), 0 0 10px rgba(232, 192, 96, 0.3);
   border-color: var(--accent-gold);
-  box-shadow: 2px 2px 0 0 var(--shadow-color), 0 0 8px rgba(232, 192, 96, 0.3);
 }
 
 .roster-select-card:active, .tarot-select-card:active {
@@ -1454,19 +1451,17 @@ body {
   gap: 6px;
   text-align: center;
   box-shadow: 3px 3px 0 0 var(--shadow-color);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: none;
 }
 
-.elo-card:hover {
-  transform: translateY(-4px) scale(1.03);
-  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(106, 170, 48, 0.25);
-  border-color: var(--accent-green);
+.elo-card:hover:not(.selected) {
+  /* No hover effect — mouseenter sets .selected immediately */
 }
 
 .elo-card.selected {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(232, 192, 96, 0.3);
   border-color: var(--accent-gold);
-  box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 10px rgba(232, 192, 96, 0.35);
-  transform: translateY(-2px);
 }
 
 .elo-card:active {
@@ -1477,19 +1472,13 @@ body {
 .elo-card:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2px; }
 
 .elo-card.owned {
-  opacity: 0.4;
-  pointer-events: none;
+  opacity: 0.5;
+  filter: saturate(0.3) brightness(0.8);
 }
 
 .elo-card.unaffordable {
-  opacity: 0.4;
-  cursor: not-allowed;
-  filter: saturate(0.3) brightness(0.7);
-}
-.elo-card.unaffordable:hover {
-  transform: none;
-  box-shadow: 3px 3px 0 0 var(--shadow-color);
-  border-color: #2a3a22;
+  opacity: 0.5;
+  filter: saturate(0.3) brightness(0.8);
 }
 
 .elo-card-icon { font-size: 1.6rem; }
@@ -1696,7 +1685,7 @@ body {
   background: rgba(8, 6, 4, 0.92);
 }
 
-.options-panel, .chessticon-panel {
+.options-panel {
   position: relative;
   background: var(--bg-panel);
   border-top: var(--px) solid var(--accent-green);
@@ -1716,7 +1705,7 @@ body {
   box-shadow: 6px 6px 0 0 var(--shadow-color);
 }
 
-.options-panel h2, .chessticon-panel h2 {
+.options-panel h2 {
   color: var(--accent-green);
   font-size: 0.85rem;
   letter-spacing: 0.15em;
@@ -1724,7 +1713,7 @@ body {
   text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
 }
 
-.options-panel h2::after, .chessticon-panel h2::after {
+.options-panel h2::after {
   content: '';
   display: block;
   width: 100%;
@@ -1891,24 +1880,149 @@ body {
   background: #1a0c08;
 }
 
-/* --- Chessticon tabs --- */
+/* ================================================================
+   CHESSTICON BOOK LAYOUT
+   ================================================================ */
+
+.chessticon-book {
+  position: relative;
+  /* Leather grain texture — crosshatch of faint vertical + horizontal lines */
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 3px,
+      rgba(60, 40, 20, 0.12) 3px, rgba(60, 40, 20, 0.12) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 5px,
+      rgba(50, 30, 15, 0.08) 5px, rgba(50, 30, 15, 0.08) 6px
+    ),
+    #1a1208;
+  /* Beveled wood frame — light top-left, dark bottom-right */
+  border: 6px solid var(--shelf-frame-outer);
+  border-top-color: var(--shelf-edge-light);
+  border-left-color: var(--shelf-edge-light);
+  border-bottom-color: var(--shelf-edge-dark);
+  border-right-color: var(--shelf-edge-dark);
+  outline: 3px solid var(--shelf-frame-inner);
+  outline-offset: -9px;
+  border-radius: 0;
+  padding: 0;
+  width: 90vw;
+  max-width: 900px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  /* Multi-layer hard shadow for 3D book thickness */
+  box-shadow:
+    4px 4px 0 0 #2a1a0e,
+    8px 8px 0 0 #1a0e06,
+    12px 12px 0 0 var(--shadow-color);
+  overflow: hidden;
+}
+
+/* Top molding strip */
+.chessticon-book::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  height: 8px;
+  background: linear-gradient(180deg, #8c6840 0%, var(--shelf-frame-outer) 60%, var(--shelf-frame-inner) 100%);
+  border-bottom: 2px solid var(--shelf-frame-inner);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Bottom molding strip */
+.chessticon-book::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: -3px;
+  right: -3px;
+  height: 8px;
+  background: linear-gradient(0deg, #8c6840 0%, var(--shelf-frame-outer) 60%, var(--shelf-frame-inner) 100%);
+  border-top: 2px solid var(--shelf-frame-inner);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.book-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 8px;
+  /* Ornamental bottom border — repeating diamond pattern */
+  border-bottom: none;
+  background: #1e1408;
+  position: relative;
+}
+
+.book-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  height: 4px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 4px,
+      #5c4830 4px,
+      #5c4830 6px,
+      transparent 6px,
+      transparent 10px
+    );
+  opacity: 0.7;
+}
+
+.book-header h2 {
+  color: var(--accent-green);
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  margin: 0;
+  /* Embossed leather title — highlight above, shadow below */
+  text-shadow:
+    0 -1px 0 rgba(255, 255, 200, 0.15),
+    0 1px 0 rgba(0, 0, 0, 0.6),
+    2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.book-header h2::after { display: none; }
+
+.codex-completion {
+  font-size: 0.5rem;
+  color: var(--accent-gold);
+  letter-spacing: 0.08em;
+}
+
+/* --- Chessticon tabs (bookmark style) --- */
 .chessticon-tabs {
   display: flex;
-  gap: 2px;
+  gap: 0;
   flex-wrap: wrap;
   justify-content: center;
+  background: #14100a;
+  border-bottom: 2px solid #3a2a16;
+  padding: 0 4px;
 }
 
 .chessticon-tab {
-  padding: 7px 12px;
+  padding: 6px 10px;
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
   color: var(--text-muted);
   font-family: 'Press Start 2P', monospace;
-  font-size: 0.55rem;
+  font-size: 0.42rem;
   cursor: pointer;
   transition: none;
+  white-space: nowrap;
 }
 
 .chessticon-tab:hover { color: var(--text-main); }
@@ -1916,87 +2030,421 @@ body {
 .chessticon-tab.active {
   color: var(--accent-green);
   border-bottom-color: var(--accent-green);
-}
-
-/* --- Codex grid --- */
-.codex-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  width: 100%;
-  max-height: 50vh;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.codex-card {
-  background: var(--bg-card);
+  /* Raised bookmark tab — beveled edges */
+  background: #1e1810;
   border-top: 2px solid var(--bevel-light);
-  border-left: 2px solid var(--bevel-light);
-  border-bottom: 2px solid var(--bevel-dark);
-  border-right: 2px solid var(--bevel-dark);
-  border-radius: 0;
-  padding: 12px;
+  border-left: 1px solid var(--bevel-light);
+  border-right: 1px solid var(--bevel-dark);
+  margin-bottom: -2px;
+  padding-bottom: 8px;
+}
+
+.tab-count {
+  color: var(--text-muted);
+  font-size: 0.38rem;
+  opacity: 0.6;
+}
+
+.chessticon-tab.active .tab-count {
+  color: var(--accent-green);
+  opacity: 0.8;
+}
+
+/* --- Book spread (left + spine + right) --- */
+.book-spread {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px, transparent 19px,
+      rgba(100, 80, 50, 0.06) 19px, rgba(100, 80, 50, 0.06) 20px
+    ),
+    #1c1408;
+  /* Slight warm inner glow from page surface */
+  box-shadow: inset 0 0 20px rgba(40, 30, 15, 0.4);
+}
+
+/* Page stack — right edge */
+.book-spread::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 0;
+  width: 6px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      #2a2014 0px, #2a2014 2px,
+      #1a1208 2px, #1a1208 3px
+    );
+  z-index: 2;
+  pointer-events: none;
+  border-left: 1px solid rgba(60, 45, 25, 0.5);
+}
+
+/* Page stack — bottom edge */
+.book-spread::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 5px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #2a2014 0px, #2a2014 2px,
+      #1a1208 2px, #1a1208 3px
+    );
+  z-index: 2;
+  pointer-events: none;
+  border-top: 1px solid rgba(60, 45, 25, 0.5);
+}
+
+.book-page {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  text-align: center;
-  transition: none;
-  box-shadow: 3px 3px 0 0 var(--shadow-color);
+  overflow: hidden;
 }
 
-.codex-card:hover {
-  border-top-color: var(--accent-green);
-  border-left-color: #4a8828;
-  background: var(--bg-card-hover);
+.book-left {
+  width: 280px;
+  max-width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid #2a1e10;
+  position: relative;
 }
 
-.codex-card:active {
-  transform: translate(1px, 1px);
-  box-shadow: 1px 1px 0 0 var(--shadow-color);
+/* Corner ornament — top-left L-bracket */
+.book-left::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid var(--accent-gold);
+  border-left: 2px solid var(--accent-gold);
+  opacity: 0.18;
+  z-index: 3;
+  pointer-events: none;
 }
 
-.codex-card.locked { opacity: 0.3; }
-
-.codex-card .codex-icon { font-size: 1.6rem; }
-.codex-card .codex-name { font-size: 0.55rem; font-weight: 400; color: var(--accent-tan); }
-.codex-card .codex-stats { font-size: 0.45rem; color: #aaa; }
-.codex-card .codex-desc { font-size: 0.45rem; color: var(--text-dim); line-height: 1.5; }
-
-.codex-card .codex-rarity {
-  font-size: 0.45rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-.codex-card .codex-rarity.common    { color: #b4b4b4; }
-.codex-card .codex-rarity.uncommon  { color: #66bbff; }
-.codex-card .codex-rarity.rare      { color: #5588ff; }
-.codex-card .codex-rarity.epic      { color: #bb44ff; }
-.codex-card .codex-rarity.legendary { color: #ffc832; text-shadow: 2px 2px 0 rgba(100, 80, 0, 0.4); }
-
-/* Rarity border colors on codex cards */
-.codex-card.rarity-rare    { border-top-color: #3366aa; border-left-color: #3366aa; }
-.codex-card.rarity-epic    { border-top-color: #8844bb; border-left-color: #8844bb; }
-.codex-card.rarity-legendary {
-  border-top-color: var(--accent-gold);
-  border-left-color: var(--accent-gold);
-  animation: codexLegendaryBlink 1.5s steps(1) infinite;
+.book-right {
+  flex: 1;
+  min-width: 0;
+  position: relative;
 }
 
-@keyframes codexLegendaryBlink {
-  0%, 60% { border-top-color: var(--accent-gold); border-left-color: var(--accent-gold); }
-  61%, 100% { border-top-color: #cc9900; border-left-color: #cc9900; }
+/* Corner ornament — bottom-right L-bracket */
+.book-right::after {
+  content: '';
+  position: absolute;
+  bottom: 6px;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  border-bottom: 2px solid var(--accent-gold);
+  border-right: 2px solid var(--accent-gold);
+  opacity: 0.18;
+  z-index: 3;
+  pointer-events: none;
 }
 
-.codex-subheader {
-  grid-column: 1 / -1;
-  font-size: 0.5rem;
+.page-inner {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-dim) transparent;
+  /* Parchment texture — warm base with faint ruled lines + vertical fiber grain */
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px, transparent 17px,
+      rgba(100, 80, 50, 0.05) 17px, rgba(100, 80, 50, 0.05) 18px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 7px,
+      rgba(80, 60, 30, 0.03) 7px, rgba(80, 60, 30, 0.03) 8px
+    ),
+    #221a0e;
+  /* Beveled page edges — sunken page effect */
+  border-top: 1px solid rgba(80, 60, 35, 0.3);
+  border-left: 1px solid rgba(80, 60, 35, 0.3);
+  border-bottom: 1px solid rgba(10, 8, 4, 0.5);
+  border-right: 1px solid rgba(10, 8, 4, 0.5);
+  /* Inner shadow along spine side — page curve illusion */
+  box-shadow: inset 4px 0 8px rgba(0, 0, 0, 0.2);
+}
+
+.page-inner::-webkit-scrollbar { width: 5px; }
+.page-inner::-webkit-scrollbar-track { background: transparent; }
+.page-inner::-webkit-scrollbar-thumb { background: var(--border-dim); }
+
+.book-spine {
+  width: 12px;
+  flex-shrink: 0;
+  /* Raised center ridge with deeper edges */
+  background:
+    /* Binding stitches — golden thread dashes */
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px, transparent 8px,
+      rgba(200, 160, 80, 0.25) 8px, rgba(200, 160, 80, 0.25) 10px,
+      transparent 10px, transparent 14px
+    ),
+    /* Base spine gradient with center highlight */
+    linear-gradient(90deg, #120a04, #1a0e06, #3a2816, #4a3420, #3a2816, #1a0e06, #120a04);
+  /* Deep center binding crease */
+  box-shadow:
+    inset 3px 0 6px rgba(0, 0, 0, 0.7),
+    inset -3px 0 6px rgba(0, 0, 0, 0.7),
+    inset 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Back button at bottom --- */
+.chessticon-book > .options-btn {
+  margin: 0;
+  border-top: 2px solid #3a2a16;
+  box-shadow: none;
+  width: 100%;
+  padding: 10px;
+  font-size: 0.55rem;
+  position: relative;
+  z-index: 3;
+}
+
+/* --- Index entries (left page) --- */
+.index-group-header {
+  font-size: 0.42rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-dim);
   padding: 8px 0 4px;
-  border-bottom: 2px solid #3a2a16;
+  border-bottom: 1px solid #3a2a16;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.index-group-header:first-child { margin-top: 0; }
+
+.index-group-icon {
+  font-size: 0.55rem;
+  opacity: 0.6;
+}
+
+.index-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  font-size: 0.45rem;
+}
+
+.index-entry:hover {
+  background: rgba(106, 170, 48, 0.08);
+}
+
+.index-entry.selected {
+  border-left-color: var(--accent-green);
+  background: rgba(106, 170, 48, 0.12);
+}
+
+.index-entry.locked {
+  opacity: 0.35;
+}
+
+.index-entry-icon {
+  font-size: 0.75rem;
+  width: 1.2em;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.index-entry-name {
+  flex: 1;
+  color: var(--accent-tan);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-entry.locked .index-entry-name {
+  color: var(--text-muted);
+}
+
+.rarity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* --- Detail view (right page) --- */
+.detail-placeholder {
+  color: var(--text-muted);
+  font-size: 0.55rem;
+  text-align: center;
+  padding-top: 40%;
+}
+
+.detail-header {
+  text-align: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #3a2a16;
+  margin-bottom: 10px;
+}
+
+.detail-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 6px;
+  filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.5));
+}
+
+.detail-name {
+  font-size: 0.7rem;
+  color: var(--accent-tan);
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.detail-tagline {
+  font-size: 0.45rem;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-bottom: 6px;
+}
+
+.detail-rarity {
+  font-size: 0.42rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: bold;
+  display: inline-block;
+  padding: 1px 8px;
+}
+
+.detail-rarity.common    { color: #b4b4b4; }
+.detail-rarity.rare      { color: var(--rarity-rare); }
+.detail-rarity.epic      { color: var(--rarity-epic); }
+.detail-rarity.legendary { color: var(--rarity-legendary); text-shadow: 1px 1px 0 rgba(100,80,0,0.4); }
+
+/* Stats grid */
+.detail-stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  font-size: 0.45rem;
+  padding: 8px 0;
+  border-bottom: 1px solid #3a2a16;
+  margin-bottom: 8px;
+}
+
+.detail-stat-label {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-stat-value {
+  color: var(--text-main);
+}
+
+/* Description sections */
+.detail-section {
+  margin-bottom: 8px;
+}
+
+.detail-section-title {
+  font-size: 0.42rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent-green);
+  margin-bottom: 3px;
+}
+
+.detail-section-body {
+  font-size: 0.45rem;
+  color: var(--text-main);
+  line-height: 1.6;
+}
+
+.detail-section-body.passive { color: #8c8; }
+.detail-section-body.drawback { color: #c88; }
+.detail-section-body.locked-text { color: var(--text-muted); font-style: italic; }
+
+/* Achievement-specific detail */
+.detail-section-body .ach-status {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 0.42rem;
+  margin-top: 4px;
+}
+.detail-section-body .ach-status.earned { color: var(--accent-green); }
+.detail-section-body .ach-status.locked { color: var(--text-muted); }
+
+/* Pieces required list */
+.detail-pieces-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.detail-piece-tag {
+  font-size: 0.42rem;
+  padding: 2px 6px;
+  background: rgba(106, 170, 48, 0.1);
+  border: 1px solid rgba(106, 170, 48, 0.2);
+  color: var(--accent-tan);
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  .chessticon-book {
+    width: 96vw;
+    max-height: 90vh;
+    box-shadow: 3px 3px 0 0 #2a1a0e, 6px 6px 0 0 var(--shadow-color);
+  }
+
+  .book-spread {
+    flex-direction: column;
+  }
+
+  .book-spread::before {
+    /* Page stack moves to bottom only on mobile */
+    display: none;
+  }
+
+  .book-left {
+    width: 100%;
+    max-width: none;
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #2a1e10;
+  }
+
+  .book-left::before { display: none; }
+
+  .book-spine { display: none; }
+
+  .book-right {
+    flex: 1;
+  }
+
+  .book-right::after { display: none; }
 }
 
 /* === Card deal-in animation (Balatro-style bounce) === */

@@ -55,18 +55,21 @@ class GameBridge:
 
     def get_codex_data(self) -> dict:
         """Collect all static definitions plus discovery state for codex."""
-        from pieces import PIECE_STATS, PieceType, PIECE_INFO
-        from modifiers import CELL_MODIFIERS, BORDER_MODIFIERS, TAROT_CARDS, ARTIFACTS
+        from pieces import PIECE_STATS, PieceType, PIECE_INFO, MODIFIERS
+        from modifiers import CELL_MODIFIERS, BORDER_MODIFIERS, TAROT_CARDS, ARTIFACTS, PIECE_MODIFIER_VISUALS
         from synergies import SYNERGIES
         from masters import MASTERS
+        from achievements import ACHIEVEMENTS, ACHIEVEMENT_CATEGORIES
         from rarity import (
             PIECE_RARITY, PIECE_MOD_RARITY, TAROT_RARITY, ARTIFACT_RARITY,
             CELL_MOD_RARITY, BORDER_MOD_RARITY, RARITY_PROPS, Rarity,
         )
+        from taglines import TAGLINES, PIECE_FACTIONS, FACTION_ORDER, FACTION_ICONS
 
         pieces = []
         for pt, (hp, atk) in PIECE_STATS.items():
             r = PIECE_RARITY.get(pt.value, Rarity.COMMON)
+            info = PIECE_INFO.get(pt, {})
             pieces.append({
                 "key": pt.value,
                 "name": pt.value.replace("_", " ").title(),
@@ -75,6 +78,10 @@ class GameBridge:
                 "unlocked": pt.value in self._save_data.unlocked_pieces,
                 "rarity": r.value,
                 "rarityColor": list(RARITY_PROPS[r]["color"]),
+                "tagline": TAGLINES.get("piece:" + pt.value, ""),
+                "faction": PIECE_FACTIONS.get(pt.value, "Unknown"),
+                "move": info.get("move", ""),
+                "ability": info.get("ability", ""),
             })
 
         cell_mods = []
@@ -88,6 +95,7 @@ class GameBridge:
                 "description": m["description"],
                 "rarity": r.value,
                 "rarityColor": list(RARITY_PROPS[r]["color"]),
+                "tagline": TAGLINES.get("cell_mod:" + key, ""),
             })
 
         border_mods = []
@@ -96,10 +104,26 @@ class GameBridge:
             border_mods.append({
                 "key": key,
                 "name": m["name"],
+                "icon": "\u25A3",
                 "color": list(m["border_color"]),
                 "description": m["description"],
                 "rarity": r.value,
                 "rarityColor": list(RARITY_PROPS[r]["color"]),
+                "tagline": TAGLINES.get("border_mod:" + key, ""),
+            })
+
+        piece_mods = []
+        for key, mod in MODIFIERS.items():
+            r = PIECE_MOD_RARITY.get(key, Rarity.COMMON)
+            vis = PIECE_MODIFIER_VISUALS.get(key, {})
+            piece_mods.append({
+                "key": key,
+                "name": mod.name,
+                "description": mod.description,
+                "rarity": r.value,
+                "rarityColor": list(RARITY_PROPS[r]["color"]),
+                "color": list(vis.get("color", (200, 200, 200))),
+                "tagline": TAGLINES.get("piece_mod:" + key, ""),
             })
 
         tarots = []
@@ -114,6 +138,7 @@ class GameBridge:
                 "description": t["description"],
                 "rarity": r.value,
                 "rarityColor": list(RARITY_PROPS[r]["color"]),
+                "tagline": TAGLINES.get("tarot:" + key, ""),
             })
 
         artifacts = []
@@ -128,18 +153,21 @@ class GameBridge:
                 "rarity": r.value,
                 "rarityColor": list(RARITY_PROPS[r]["color"]),
                 "description": a["description"],
+                "tagline": TAGLINES.get("artifact:" + key, ""),
             })
 
         synergies = []
         discovered = set(self._save_data.discovered_synergies)
         for s in SYNERGIES:
             synergies.append({
+                "key": s.effect_key,
                 "name": s.name,
                 "icon": s.icon,
                 "color": list(s.color),
                 "description": s.description,
                 "required_pieces": [p.value for p in s.required_pieces],
                 "discovered": s.effect_key in discovered,
+                "tagline": TAGLINES.get("synergy:" + s.effect_key, ""),
             })
 
         masters_list = []
@@ -153,33 +181,57 @@ class GameBridge:
                 "icon": m.icon,
                 "color": list(m.color),
                 "unlocked": key in self._save_data.unlocked_masters,
+                "tagline": TAGLINES.get("master:" + key, ""),
+            })
+
+        unlocked_ach = set(self._save_data.unlocked_achievements)
+        achievements = []
+        for ach in ACHIEVEMENTS:
+            earned = ach.key in unlocked_ach
+            achievements.append({
+                "key": ach.key,
+                "name": ach.name if (earned or not ach.hidden) else "???",
+                "description": ach.description if (earned or not ach.hidden) else "Hidden achievement",
+                "icon": ach.icon if (earned or not ach.hidden) else "?",
+                "category": ach.category,
+                "hidden": ach.hidden,
+                "earned": earned,
+                "unlocks": ach.unlocks if (earned or not ach.hidden) else [],
+                "tagline": TAGLINES.get("achievement:" + ach.key, "") if (earned or not ach.hidden) else "",
             })
 
         return {
             "pieces": pieces,
+            "piece_modifiers": piece_mods,
             "cell_modifiers": cell_mods,
             "border_modifiers": border_mods,
             "tarots": tarots,
             "artifacts": artifacts,
             "synergies": synergies,
             "masters": masters_list,
+            "achievements": achievements,
+            "achievement_categories": ACHIEVEMENT_CATEGORIES,
+            "faction_order": FACTION_ORDER,
+            "faction_icons": FACTION_ICONS,
         }
 
     def mark_codex_viewed(self, tab: str) -> None:
         """Called from chessticon.js when user views a codex tab. Increments unique entries viewed."""
-        from pieces import PIECE_STATS
+        from pieces import PIECE_STATS, MODIFIERS
         from modifiers import CELL_MODIFIERS, BORDER_MODIFIERS, TAROT_CARDS, ARTIFACTS
         from synergies import SYNERGIES
         from masters import MASTERS
+        from achievements import ACHIEVEMENTS
 
         # Count items for this tab
         tab_counts = {
             "pieces": len(PIECE_STATS),
-            "modifiers": len(CELL_MODIFIERS) + len(BORDER_MODIFIERS),
+            "modifiers": len(MODIFIERS) + len(CELL_MODIFIERS) + len(BORDER_MODIFIERS),
             "tarots": len(TAROT_CARDS),
             "artifacts": len(ARTIFACTS),
             "synergies": len(SYNERGIES),
             "masters": len(MASTERS),
+            "achievements": len(ACHIEVEMENTS),
         }
         count = tab_counts.get(tab, 0)
         if count <= 0:

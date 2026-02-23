@@ -43,8 +43,11 @@ const PieceRenderer = {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', svgData.viewBox || '0 0 64 64');
-    // Board pieces scale via CSS; others use fixed px sizes
-    if (sizeClass !== 'board') {
+    if (sizeClass === 'board') {
+      // Board pieces: fill CSS box, sized by .piece-svg-board class
+      svg.setAttribute('width', '100%');
+      svg.setAttribute('height', '100%');
+    } else {
       const size = this.SIZES[sizeClass] || 40;
       svg.setAttribute('width', size);
       svg.setAttribute('height', size);

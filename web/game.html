@@ -100,7 +100,7 @@
 
   <!-- Draft phase -->
   <div id="draft-view" class="phase">
-    <h2>Draft</h2>
+    <h2>Draft &mdash; Choose One</h2>
     <div id="draft-cards"></div>
     <div id="draft-skip-btn" class="action-btn">Skip &rarr; Next Wave</div>
     <div id="draft-message" class="phase-message"></div>
@@ -207,17 +207,25 @@
   <!-- Chessticon codex overlay -->
   <div id="chessticon-overlay" class="overlay-hidden">
     <div class="options-backdrop"></div>
-    <div class="chessticon-panel">
-      <h2>Chessticon</h2>
-      <div class="chessticon-tabs">
-        <button class="chessticon-tab active" data-tab="pieces">Pieces</button>
-        <button class="chessticon-tab" data-tab="modifiers">Modifiers</button>
-        <button class="chessticon-tab" data-tab="tarots">Tarots</button>
-        <button class="chessticon-tab" data-tab="artifacts">Artifacts</button>
-        <button class="chessticon-tab" data-tab="synergies">Synergies</button>
-        <button class="chessticon-tab" data-tab="masters">Masters</button>
+    <div class="chessticon-book">
+      <div class="book-header">
+        <h2>Chessticon</h2>
+        <span id="codex-completion" class="codex-completion">0% Complete</span>
       </div>
-      <div id="chessticon-content" class="codex-grid"></div>
+      <div class="chessticon-tabs">
+        <button class="chessticon-tab active" data-tab="pieces">Pieces <span class="tab-count"></span></button>
+        <button class="chessticon-tab" data-tab="modifiers">Modifiers <span class="tab-count"></span></button>
+        <button class="chessticon-tab" data-tab="tarots">Tarots <span class="tab-count"></span></button>
+        <button class="chessticon-tab" data-tab="artifacts">Artifacts <span class="tab-count"></span></button>
+        <button class="chessticon-tab" data-tab="synergies">Synergies <span class="tab-count"></span></button>
+        <button class="chessticon-tab" data-tab="masters">Masters <span class="tab-count"></span></button>
+        <button class="chessticon-tab" data-tab="achievements">Achievements <span class="tab-count"></span></button>
+      </div>
+      <div class="book-spread">
+        <div class="book-page book-left"><div class="page-inner" id="codex-index"></div></div>
+        <div class="book-spine"></div>
+        <div class="book-page book-right"><div class="page-inner" id="codex-detail"><div class="detail-placeholder">Select an entry</div></div></div>
+      </div>
       <button class="options-btn" id="codex-back">Back</button>
     </div>
   </div>

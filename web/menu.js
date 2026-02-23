@@ -105,6 +105,12 @@ function renderMasterCards(masters) {
       </div>
       ${m.unlocked ? '' : '<span class="lock-overlay">&#128274;</span>'}
     `;
+    card.addEventListener('mouseenter', () => {
+      if (currentPhase !== 'master') return;
+      const cards = getVisibleCards();
+      const idx = cards.indexOf(card);
+      if (idx >= 0) { focusIndex = idx; updateFocus(); }
+    });
     card.addEventListener('click', async () => {
       if (!m.unlocked) return;
       await pywebview.api.select_master(m.key);
@@ -303,6 +309,46 @@ function populateMenu(data) {
 
   updateFocus();
 }
+
+// === Mouseenter handlers — persistent selection like keyboard ===
+document.querySelectorAll('#main-menu .menu-card').forEach(card => {
+  card.addEventListener('mouseenter', () => {
+    if (currentPhase !== 'main') return;
+    const cards = getVisibleCards();
+    const idx = cards.indexOf(card);
+    if (idx >= 0) { focusIndex = idx; updateFocus(); }
+  });
+});
+
+document.querySelectorAll('#difficulty-menu .difficulty-card').forEach(card => {
+  card.addEventListener('mouseenter', () => {
+    if (currentPhase !== 'difficulty') return;
+    const cards = getVisibleCards();
+    const idx = cards.indexOf(card);
+    if (idx >= 0) { focusIndex = idx; updateFocus(); }
+  });
+});
+
+document.getElementById('btn-quit').addEventListener('mouseenter', () => {
+  if (currentPhase !== 'main') return;
+  const cards = getVisibleCards();
+  const idx = cards.indexOf(document.getElementById('btn-quit'));
+  if (idx >= 0) { focusIndex = idx; updateFocus(); }
+});
+
+document.getElementById('btn-back').addEventListener('mouseenter', () => {
+  if (currentPhase !== 'difficulty') return;
+  const cards = getVisibleCards();
+  const idx = cards.indexOf(document.getElementById('btn-back'));
+  if (idx >= 0) { focusIndex = idx; updateFocus(); }
+});
+
+document.getElementById('btn-master-back').addEventListener('mouseenter', () => {
+  if (currentPhase !== 'master') return;
+  const cards = getVisibleCards();
+  const idx = cards.indexOf(document.getElementById('btn-master-back'));
+  if (idx >= 0) { focusIndex = idx; updateFocus(); }
+});
 
 // === Click handlers ===
 document.querySelectorAll('#main-menu .menu-card').forEach(card => {

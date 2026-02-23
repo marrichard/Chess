@@ -1648,10 +1648,16 @@ function renderShop(state, animate) {
           attachTooltip(el, '<div class="tt-title">' + esc(item.name) + '</div><div class="tt-desc">' + esc(item.description) + '</div><div class="tt-mod">' + ttCost + '</div>');
         }
 
-        // Hover selects, click confirms
+        // Hover selects (immediate client-side + backend sync), click confirms
         const capturedRi = ri;
         const capturedCi = ci;
         el.addEventListener('mouseenter', () => {
+          // Immediate client-side selection update
+          container.querySelectorAll('.shelf-item.selected').forEach(s => s.classList.remove('selected'));
+          el.classList.add('selected');
+          const doneBtn = document.getElementById('shop-done-btn');
+          if (doneBtn) doneBtn.classList.remove('selected');
+          // Sync backend
           pywebview.api.set_selection(capturedRi, capturedCi).then(handleStateUpdate).catch(console.error);
         });
         el.addEventListener('click', () => {
@@ -1701,6 +1707,10 @@ function renderShop(state, animate) {
   doneBtn.className = 'action-btn';
   if (state.shopRow >= rows.length) doneBtn.classList.add('selected');
   doneBtn.onmouseenter = () => {
+    // Immediate client-side selection update
+    container.querySelectorAll('.shelf-item.selected').forEach(s => s.classList.remove('selected'));
+    doneBtn.classList.add('selected');
+    // Sync backend
     pywebview.api.set_selection(rows.length, 0).then(handleStateUpdate).catch(console.error);
   };
   doneBtn.onclick = () => {
@@ -1812,6 +1822,12 @@ function renderDraft(state, animate) {
 
       const idx = i;
       card.addEventListener('mouseenter', () => {
+        // Immediate client-side selection update
+        container.querySelectorAll('.draft-card.selected').forEach(s => s.classList.remove('selected'));
+        card.classList.add('selected');
+        const skipBtn = document.getElementById('draft-skip-btn');
+        if (skipBtn) skipBtn.classList.remove('selected');
+        // Sync backend
         pywebview.api.set_selection(idx).then(handleStateUpdate).catch(console.error);
       });
       card.addEventListener('click', () => {
@@ -1834,6 +1850,13 @@ function renderDraft(state, animate) {
   skipBtn.className = 'action-btn';
   const skipIdx = options.findIndex(o => o.type === 'skip');
   if (skipIdx >= 0 && skipIdx === state.draftSelection) skipBtn.classList.add('selected');
+  skipBtn.onmouseenter = () => {
+    // Immediate client-side selection update
+    container.querySelectorAll('.draft-card.selected').forEach(s => s.classList.remove('selected'));
+    skipBtn.classList.add('selected');
+    // Sync backend
+    if (skipIdx >= 0) pywebview.api.set_selection(skipIdx).then(handleStateUpdate).catch(console.error);
+  };
   skipBtn.onclick = () => {
     pywebview.api.send_action('CANCEL', -1, -1).then(handleStateUpdate).catch(console.error);
   };
@@ -1909,6 +1932,10 @@ function renderPieceMod(state) {
 
     const pmIdx = i;
     card.addEventListener('mouseenter', () => {
+      // Immediate client-side selection update
+      container.querySelectorAll('.roster-select-card.selected').forEach(s => s.classList.remove('selected'));
+      card.classList.add('selected');
+      // Sync backend
       pywebview.api.set_selection(pmIdx).then(handleStateUpdate).catch(console.error);
     });
     card.addEventListener('click', () => {
@@ -1951,6 +1978,10 @@ function renderSwapTarot(state) {
 
     const stIdx = i;
     card.addEventListener('mouseenter', () => {
+      // Immediate client-side selection update
+      container.querySelectorAll('.tarot-select-card.selected').forEach(s => s.classList.remove('selected'));
+      card.classList.add('selected');
+      // Sync backend
       pywebview.api.set_selection(stIdx).then(handleStateUpdate).catch(console.error);
     });
     card.addEventListener('click', () => {
@@ -2115,8 +2146,15 @@ function renderEloShop(state) {
       // Tooltip
       attachTooltip(card, '<div class="tt-title">' + esc(item.name) + '</div><div class="tt-desc">' + esc(descText) + '</div>' + (item.owned ? '' : '<div class="tt-mod">' + item.cost + ' ELO</div>'));
 
-      // Click to select (not buy)
+      // Hover + click to select
       const eloIdx = i;
+      card.addEventListener('mouseenter', () => {
+        // Immediate client-side selection update
+        container.querySelectorAll('.elo-card.selected').forEach(s => s.classList.remove('selected'));
+        card.classList.add('selected');
+        // Sync backend
+        pywebview.api.set_selection(eloIdx).then(handleStateUpdate).catch(console.error);
+      });
       card.addEventListener('click', () => {
         pywebview.api.set_selection(eloIdx).then(handleStateUpdate).catch(console.error);
       });
