@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 
 # Save file lives next to this module
@@ -20,6 +21,7 @@ class SaveData:
     elo: int = 0
     unlocked_pieces: list[str] = field(default_factory=lambda: list(DEFAULT_PIECES))
     unlocked_modifiers: list[str] = field(default_factory=lambda: list(DEFAULT_MODIFIERS))
+    unlocked_artifacts: list[str] = field(default_factory=list)
     upgrades: dict[str, int] = field(default_factory=dict)
     grandmaster_unlocked: bool = False
     discovered_synergies: list[str] = field(default_factory=list)
@@ -69,6 +71,7 @@ def load() -> SaveData:
         data.elo = raw.get("elo", 0)
         data.unlocked_pieces = raw.get("unlocked_pieces", list(DEFAULT_PIECES))
         data.unlocked_modifiers = raw.get("unlocked_modifiers", list(DEFAULT_MODIFIERS))
+        data.unlocked_artifacts = raw.get("unlocked_artifacts", [])
         data.upgrades = raw.get("upgrades", {})
         data.grandmaster_unlocked = raw.get("grandmaster_unlocked", False)
         data.discovered_synergies = raw.get("discovered_synergies", [])
@@ -92,6 +95,7 @@ def save(data: SaveData) -> None:
         "elo": data.elo,
         "unlocked_pieces": data.unlocked_pieces,
         "unlocked_modifiers": data.unlocked_modifiers,
+        "unlocked_artifacts": data.unlocked_artifacts,
         "upgrades": data.upgrades,
         "grandmaster_unlocked": data.grandmaster_unlocked,
         "discovered_synergies": data.discovered_synergies,
@@ -101,14 +105,36 @@ def save(data: SaveData) -> None:
         "settings": data.settings,
         "stats": data.stats,
     }
-    with open(SAVE_PATH, "w") as f:
-        json.dump(payload, f, indent=2)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=_SAVE_DIR, suffix=".tmp")
+    closed = False
+    try:
+        os.write(tmp_fd, json.dumps(payload, indent=2).encode())
+        os.close(tmp_fd)
+        closed = True
+        os.replace(tmp_path, SAVE_PATH)
+    except Exception:
+        if not closed:
+            os.close(tmp_fd)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 def save_run(state: dict) -> None:
     """Save serialized run state to continue_run.json."""
-    with open(RUN_SAVE_PATH, "w") as f:
-        json.dump(state, f, indent=2)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=_SAVE_DIR, suffix=".tmp")
+    closed = False
+    try:
+        os.write(tmp_fd, json.dumps(state, indent=2).encode())
+        os.close(tmp_fd)
+        closed = True
+        os.replace(tmp_path, RUN_SAVE_PATH)
+    except Exception:
+        if not closed:
+            os.close(tmp_fd)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 def load_run() -> dict | None:
@@ -138,6 +164,9 @@ def unlock_item(data: SaveData, category: str, key: str) -> None:
             data.unlocked_modifiers.append(key)
     elif category == "Upgrade":
         data.upgrades[key] = data.upgrades.get(key, 0) + 1
+    elif category == "Artifact":
+        if key not in data.unlocked_artifacts:
+            data.unlocked_artifacts.append(key)
     elif category == "Master":
         if key not in data.unlocked_masters:
             data.unlocked_masters.append(key)

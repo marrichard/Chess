@@ -138,7 +138,6 @@ SYNERGIES: list[Synergy] = [
         min_counts={},
         required_modifiers=["blazing"],
         required_tarots=["the_inferno"],
-        required_master="the_arsonist",
         effect_key="scorched_earth",
     ),
     Synergy(
@@ -162,7 +161,6 @@ SYNERGIES: list[Synergy] = [
         min_counts={},
         required_modifiers=["frozen"],
         required_artifacts=["frost_shard"],
-        required_tarots=["the_glacier"],
         effect_key="permafrost",
     ),
     Synergy(
@@ -186,7 +184,6 @@ SYNERGIES: list[Synergy] = [
         min_counts={},
         required_modifiers=["toxic"],
         required_artifacts=["venom_gland"],
-        required_tarots=["the_plague"],
         effect_key="pandemic",
     ),
     Synergy(
@@ -263,7 +260,7 @@ SYNERGIES: list[Synergy] = [
         required_pieces=[],
         min_counts={},
         required_modifiers=["armored"],
-        min_modifier_count=3,
+        min_modifier_count=2,
         required_master="the_warden",
         required_border_mods=["fortified"],
         effect_key="fortress_protocol",
@@ -322,7 +319,7 @@ SYNERGIES: list[Synergy] = [
         min_counts={},
         required_modifiers=[],
         required_master="the_merchant",
-        required_artifacts=["dragons_hoard", "lucky_coin"],
+        required_artifacts=["dragons_hoard"],
         effect_key="trade_empire",
     ),
 
@@ -336,7 +333,6 @@ SYNERGIES: list[Synergy] = [
         required_modifiers=[],
         required_master="the_anarchist",
         required_artifacts=["chaos_engine"],
-        required_tarots=["the_chaos"],
         effect_key="entropy",
     ),
     Synergy(
@@ -526,12 +522,16 @@ def check_synergies(
 
         # Check required cell mods (on the board)
         if syn.required_cell_mods:
-            if not all(c in cell_mod_keys for c in syn.required_cell_mods):
+            needed = max(len(syn.required_cell_mods) - reduction, 0)
+            found = sum(1 for c in syn.required_cell_mods if c in cell_mod_keys)
+            if found < needed:
                 continue
 
         # Check required border mods (on the board)
         if syn.required_border_mods:
-            if not all(b in border_mod_keys for b in syn.required_border_mods):
+            needed = max(len(syn.required_border_mods) - reduction, 0)
+            found = sum(1 for b in syn.required_border_mods if b in border_mod_keys)
+            if found < needed:
                 continue
 
         active.append(syn.effect_key)

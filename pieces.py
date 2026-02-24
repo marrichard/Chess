@@ -245,7 +245,7 @@ PIECE_STATS: dict[PieceType, tuple[int, int]] = {
     PieceType.PAWN: (4, 2), PieceType.KNIGHT: (7, 5), PieceType.BISHOP: (6, 3),
     PieceType.ROOK: (14, 4), PieceType.QUEEN: (14, 6), PieceType.KING: (20, 3),
     PieceType.BOMB: (1, 0), PieceType.MIMIC: (3, 1), PieceType.LEECH: (6, 2),
-    PieceType.SUMMONER: (5, 0), PieceType.GHOST: (3, 3), PieceType.GAMBLER: (5, 10),
+    PieceType.SUMMONER: (5, 0), PieceType.GHOST: (3, 3), PieceType.GAMBLER: (5, 12),
     PieceType.ANCHOR_PIECE: (20, 0), PieceType.PARASITE: (4, 0),
     PieceType.MIRROR_PIECE: (5, 3), PieceType.VOID: (8, 4),
     PieceType.PHOENIX: (6, 4), PieceType.KING_RAT: (4, 2),
@@ -340,7 +340,7 @@ PIECE_INFO: dict[PieceType, dict[str, str | None]] = {
     # --- Expansion pieces ---
     PieceType.ASSASSIN: {
         "move": "Leaps in an L-shape",
-        "ability": "Triple damage to full-HP targets. Dies after 2 captures.",
+        "ability": "Triple damage to full-HP targets. Dies after 3 captures.",
     },
     PieceType.BERSERKER_PIECE: {
         "move": "Moves one square any direction",
@@ -729,6 +729,9 @@ class Piece:
                 dirs += [(-1,0),(1,0),(0,-1),(0,1)]
             has_piercing = any(m.effect == "piercing" for m in self.modifiers)
             has_phase = (self.cell_modifier and self.cell_modifier.effect == "phase")
+            has_ethereal = (any(m.effect == "ethereal" for m in self.modifiers)
+                            or (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                                and "phantom_passive" in board.master_effects))
             for dx, dy in dirs:
                 skipped = False
                 for dist in range(1, max(board.width, board.height)):
@@ -739,6 +742,11 @@ class Piece:
                         break
                     target = board.get_piece_at(nx, ny)
                     if target:
+                        if has_ethereal:
+                            # Ethereal: pass through all pieces, can capture enemies
+                            if target.team != self.team:
+                                valid.append((nx, ny))
+                            continue
                         if target.team == self.team:
                             # Phase: can pass through friendly pieces
                             if has_phase:
@@ -825,6 +833,9 @@ class Piece:
 
         elif self.piece_type == PieceType.PHOENIX:
             # Bishop-style (standard sliding with blocking)
+            has_ethereal = (any(m.effect == "ethereal" for m in self.modifiers)
+                            or (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                                and "phantom_passive" in board.master_effects))
             for dx, dy in [(-1,-1),(-1,1),(1,-1),(1,1)]:
                 has_piercing = any(m.effect == "piercing" for m in self.modifiers)
                 skipped = False
@@ -836,6 +847,10 @@ class Piece:
                         break
                     target = board.get_piece_at(nx, ny)
                     if target:
+                        if has_ethereal:
+                            if target.team != self.team:
+                                valid.append((nx, ny))
+                            continue
                         if target.team == self.team:
                             if has_piercing and not skipped:
                                 skipped = True
@@ -851,6 +866,9 @@ class Piece:
 
         elif self.piece_type == PieceType.VOID:
             # Queen-style (standard sliding)
+            has_ethereal = (any(m.effect == "ethereal" for m in self.modifiers)
+                            or (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                                and "phantom_passive" in board.master_effects))
             for dx, dy in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
                 has_piercing = any(m.effect == "piercing" for m in self.modifiers)
                 skipped = False
@@ -862,6 +880,10 @@ class Piece:
                         break
                     target = board.get_piece_at(nx, ny)
                     if target:
+                        if has_ethereal:
+                            if target.team != self.team:
+                                valid.append((nx, ny))
+                            continue
                         if target.team == self.team:
                             if has_piercing and not skipped:
                                 skipped = True
@@ -911,6 +933,9 @@ class Piece:
 
         # Wyvern: Knight L-shape + diagonal slide
         elif self.piece_type == PieceType.WYVERN:
+            has_ethereal = (any(m.effect == "ethereal" for m in self.modifiers)
+                            or (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                                and "phantom_passive" in board.master_effects))
             for dx, dy in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
                 nx, ny = x + dx, y + dy
                 if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
@@ -925,6 +950,10 @@ class Piece:
                         break
                     target = board.get_piece_at(nx, ny)
                     if target:
+                        if has_ethereal:
+                            if target.team != self.team:
+                                valid.append((nx, ny))
+                            continue
                         if target.team != self.team:
                             valid.append((nx, ny))
                         break
@@ -933,6 +962,9 @@ class Piece:
         # Rook-style sliders: Lancer, Charger
         elif self.piece_type in (PieceType.LANCER, PieceType.CHARGER):
             has_piercing = any(m.effect == "piercing" for m in self.modifiers)
+            has_ethereal = (any(m.effect == "ethereal" for m in self.modifiers)
+                            or (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                                and "phantom_passive" in board.master_effects))
             for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
                 skipped = False
                 for dist in range(1, max(board.width, board.height)):
@@ -943,6 +975,8 @@ class Piece:
                     if self.piece_type == PieceType.CHARGER and dist < 2:
                         target = board.get_piece_at(nx, ny)
                         if target:
+                            if has_ethereal:
+                                continue
                             if has_piercing and not skipped:
                                 skipped = True
                                 continue
@@ -950,6 +984,10 @@ class Piece:
                         continue  # skip distance 1, don't add to valid
                     target = board.get_piece_at(nx, ny)
                     if target:
+                        if has_ethereal:
+                            if target.team != self.team:
+                                valid.append((nx, ny))
+                            continue
                         if target.team == self.team:
                             if has_piercing and not skipped:
                                 skipped = True
@@ -966,6 +1004,9 @@ class Piece:
         # Bishop-style sliders: Healer, Witch, Reaper
         elif self.piece_type in (PieceType.HEALER, PieceType.WITCH, PieceType.REAPER):
             has_piercing = any(m.effect == "piercing" for m in self.modifiers)
+            has_ethereal = (any(m.effect == "ethereal" for m in self.modifiers)
+                            or (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                                and "phantom_passive" in board.master_effects))
             for dx, dy in [(-1,-1),(-1,1),(1,-1),(1,1)]:
                 skipped = False
                 for dist in range(1, max(board.width, board.height)):
@@ -974,6 +1015,12 @@ class Piece:
                         break
                     target = board.get_piece_at(nx, ny)
                     if target:
+                        if has_ethereal:
+                            if target.team != self.team:
+                                valid.append((nx, ny))
+                            elif self.piece_type == PieceType.HEALER:
+                                valid.append((nx, ny))
+                            continue
                         if target.team == self.team:
                             # Healer can target friendlies
                             if self.piece_type == PieceType.HEALER:
@@ -1038,8 +1085,25 @@ class Piece:
                             if (nx, ny) not in valid:
                                 valid.append((nx, ny))
 
-        # Phase cell modifier for non-sliding pieces (knight): allow moving
-        # through friendly-occupied squares (knight already jumps, so no change)
+        # Warden drawback: max 2 square movement range
+        if (self.team == Team.PLAYER and hasattr(board, 'master_effects')
+                and "warden_drawback" in board.master_effects):
+            valid = [(mx, my) for mx, my in valid
+                     if abs(mx - x) <= 2 and abs(my - y) <= 2]
+
+        # Speed gate border modifier: +2 extra range (king-style moves at range 2)
+        if hasattr(board, 'border_modifiers') and (x, y) in board.border_modifiers:
+            if board.border_modifiers[(x, y)].effect == "speed_gate":
+                for dx in range(-2, 3):
+                    for dy in range(-2, 3):
+                        if dx == 0 and dy == 0:
+                            continue
+                        nx, ny = x + dx, y + dy
+                        if board.in_bounds(nx, ny) and not board.is_blocked(nx, ny):
+                            target = board.get_piece_at(nx, ny)
+                            if not target or target.team != self.team:
+                                if (nx, ny) not in valid:
+                                    valid.append((nx, ny))
 
         return valid
 

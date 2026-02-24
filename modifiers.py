@@ -187,6 +187,14 @@ CELL_MODIFIERS: dict[str, dict] = {
         "icon": "G",
         "description": "When a piece dies here, spawn a Pawn for the killer's team",
     },
+    "cursed_ground": {
+        "name": "Cursed Ground",
+        "effect": "cursed_ground",
+        "color": (100, 50, 200),
+        "overlay_alpha": 0.25,
+        "icon": "C",
+        "description": "Enemy stepping here takes 1 damage",
+    },
 }
 
 

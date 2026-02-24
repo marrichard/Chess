@@ -333,9 +333,6 @@ let pendingSpawns = {};
 let pendingHits = {};
 // pendingDeaths: array of {x, y, type, team, mods, deathStyle} for pieces that disappeared
 let pendingDeaths = [];
-// previousBoardState: snapshot of the previous board for HP diffing
-let previousBoardState = null;
-
 function detectAnimations(oldSt, newSt) {
   pendingSlides = {};
   pendingSpawns = {};
@@ -468,6 +465,150 @@ function detectAnimations(oldSt, newSt) {
     spawnDeathAnimation(death.x, death.y, death.type, death.team, death.deathStyle);
   }
 
+  // Screen flash on kills (only for special kills, not every standard capture)
+  if (pendingDeaths.length >= 2) {
+    spawnScreenFlash('#ffffff', 0.35, 300);
+  } else if (pendingDeaths.length === 1) {
+    if (pendingDeaths[0].deathStyle === 'fire') {
+      spawnScreenFlash('#ff6622', 0.2, 250);
+    } else if (pendingDeaths[0].deathStyle === 'poison') {
+      spawnScreenFlash('#44ff44', 0.15, 200);
+    }
+  }
+
+  // Combo counter for multi-kills
+  if (pendingDeaths.length >= 2) {
+    showComboCounter(pendingDeaths.length);
+  }
+
+  // Board clear shockwave — all enemies wiped
+  if (pendingDeaths.length > 0 && newSt.phase === 'battle') {
+    let enemyCount = 0;
+    for (let y = 0; y < (newSt.boardHeight || 8); y++) {
+      for (let x = 0; x < (newSt.boardWidth || 8); x++) {
+        const nc = newSt.board[y] && newSt.board[y][x];
+        if (nc && nc.piece && nc.piece.team === 'enemy') enemyCount++;
+      }
+    }
+    let oldEnemyCount = 0;
+    for (let y = 0; y < (oldSt.boardHeight || 8); y++) {
+      for (let x = 0; x < (oldSt.boardWidth || 8); x++) {
+        const oc = oldSt.board[y] && oldSt.board[y][x];
+        if (oc && oc.piece && oc.piece.team === 'enemy') oldEnemyCount++;
+      }
+    }
+    if (enemyCount === 0 && oldEnemyCount > 0) {
+      const lastDeath = pendingDeaths[pendingDeaths.length - 1];
+      for (let r = 0; r < 3; r++) {
+        setTimeout(() => {
+          spawnShockwaveRing(lastDeath.x, lastDeath.y, '#ffffff');
+          // Override ring size to be bigger for board clear
+          const ring = particles[particles.length - 1];
+          if (ring && ring.ring) ring.ringMaxRadius = 120;
+        }, r * 80);
+      }
+      triggerShake(3);
+      spawnScreenFlash('#ffffff', 0.3, 300);
+    }
+  }
+
+  // ---- Combat effect dispatch based on lastAction metadata ----
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const nc = newSt.board[y] && newSt.board[y][x];
+      if (!nc || !nc.piece || !nc.piece.lastAction) continue;
+      const la = nc.piece.lastAction;
+      if (la.type === 'attack') {
+        const mods = la.attackerMods || [];
+        // Fire projectile
+        if (mods.includes('flaming') || mods.includes('blazing')) {
+          spawnFireProjectile(la.fromX, la.fromY, la.targetX, la.targetY);
+        }
+        // Lightning chain
+        if (mods.includes('frozen')) {
+          spawnLightningChain(la.fromX, la.fromY, la.targetX, la.targetY, '#44ddff');
+        }
+        // Explosion (bomb/cannon kills)
+        if (la.killed && (la.attackerType === 'bomb' || la.attackerType === 'cannon')) {
+          spawnExplosion(la.targetX, la.targetY);
+        }
+        // Assassin shadow trail
+        if (la.attackerType === 'assassin') {
+          spawnShadowTrail(la.fromX, la.fromY, la.targetX, la.targetY);
+          if (la.killed) spawnAssassinVignette();
+        }
+      }
+    }
+  }
+
+  // Berserker rage pulse — detect ATK increase
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const oc = oldSt.board[y] && oldSt.board[y][x];
+      const nc = newSt.board[y] && newSt.board[y][x];
+      if (oc && oc.piece && nc && nc.piece &&
+          oc.piece.type === nc.piece.type && oc.piece.team === nc.piece.team &&
+          nc.piece.type === 'berserker_piece' &&
+          nc.piece.attack > oc.piece.attack) {
+        spawnBerserkerRagePulse(x, y);
+      }
+    }
+  }
+
+  // Heal beam — detect healer → healed piece
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const oc = oldSt.board[y] && oldSt.board[y][x];
+      const nc = newSt.board[y] && newSt.board[y][x];
+      if (oc && oc.piece && nc && nc.piece &&
+          oc.piece.type === nc.piece.type && oc.piece.team === nc.piece.team) {
+        const hpDelta = nc.piece.hp - oc.piece.hp;
+        if (hpDelta > 0) {
+          // Look for a healer that moved this tick
+          for (let hy = 0; hy < 8; hy++) {
+            for (let hx = 0; hx < 8; hx++) {
+              const hc = newSt.board[hy] && newSt.board[hy][hx];
+              if (hc && hc.piece && hc.piece.lastAction &&
+                  hc.piece.lastAction.attackerType === 'healer' &&
+                  hc.piece.team === nc.piece.team) {
+                spawnHealBeam(hx, hy, x, y);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Synergy pop-off — detect newly activated synergies
+  if (oldSt.activeSynergies && newSt.activeSynergies) {
+    const oldNames = new Set((oldSt.activeSynergies || []).map(s => s.name));
+    const newSynergies = (newSt.activeSynergies || []).filter(s => !oldNames.has(s.name));
+    if (newSynergies.length > 0) {
+      newSynergies.forEach((syn, idx) => {
+        const color = syn.color ? 'rgb(' + syn.color.join(',') + ')' : '#ffd700';
+        const icon = syn.icon || '\u2726';
+        setTimeout(() => showSynergyPopoff(syn.name, icon, color), idx * 500);
+      });
+    }
+  }
+
+  // Phoenix/Time Mage spawn effects — match pending spawns against recent deaths
+  if (pendingDeaths.length > 0) {
+    const deathTypes = new Set(pendingDeaths.map(d => d.type));
+    for (const key in pendingSpawns) {
+      const [sx, sy] = key.split(',').map(Number);
+      const nc = newSt.board[sy] && newSt.board[sy][sx];
+      if (!nc || !nc.piece) continue;
+      if (nc.piece.type === 'phoenix' && deathTypes.has('phoenix')) {
+        spawnPhoenixReviveEffect(sx, sy);
+      }
+      if (nc.piece.type === 'time_mage' && deathTypes.has('time_mage')) {
+        spawnTimeMageRewindEffect();
+      }
+    }
+  }
+
   // Detect gold change
   if (oldSt.gold !== undefined && newSt.gold !== undefined && oldSt.gold !== newSt.gold) {
     flashValue('stat-gold');
@@ -530,8 +671,69 @@ function spawnDamagePopup(boardX, boardY, delta) {
   popup.textContent = delta < 0 ? delta.toString() : '+' + delta;
   popup.style.left = pos.x + 'px';
   popup.style.top = pos.y + 'px';
+
+  // Damage tier classes based on magnitude
+  const absDmg = Math.abs(delta);
+  let removeDelay = 850;
+  if (delta < 0) {
+    if (absDmg >= 15) {
+      popup.classList.add('dmg-cataclysmic');
+      removeDelay = 1250;
+      triggerShake(4);
+      spawnDamageParticleBurst(pos.x, pos.y, '#ffd700');
+    } else if (absDmg >= 10) {
+      popup.classList.add('dmg-massive');
+      removeDelay = 1050;
+      triggerShake(3);
+      spawnDamageTrailParticles(pos.x, pos.y, '#ffaa00');
+    } else if (absDmg >= 7) {
+      popup.classList.add('dmg-heavy');
+      removeDelay = 950;
+    } else if (absDmg >= 4) {
+      popup.classList.add('dmg-medium');
+      removeDelay = 900;
+    }
+  }
+
   document.body.appendChild(popup);
-  setTimeout(() => popup.remove(), 850);
+  setTimeout(() => popup.remove(), removeDelay);
+}
+
+function spawnDamageTrailParticles(cx, cy, color) {
+  if (!particlesEnabled) return;
+  for (let i = 0; i < 5; i++) {
+    const life = 0.4 + Math.random() * 0.3;
+    particles.push({
+      x: cx + (Math.random() - 0.5) * 10,
+      y: cy,
+      vx: (Math.random() - 0.5) * 20,
+      vy: -(30 + Math.random() * 30),
+      life: life, maxLife: life,
+      color: color,
+      size: 1.5 + Math.random() * 1.5,
+      noGravity: true,
+    });
+  }
+}
+
+function spawnDamageParticleBurst(cx, cy, color) {
+  if (!particlesEnabled) return;
+  const colors = [color, '#ffffff', '#ffcc00'];
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 60;
+    const life = 0.3 + Math.random() * 0.3;
+    particles.push({
+      x: cx + (Math.random() - 0.5) * 8,
+      y: cy + (Math.random() - 0.5) * 8,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: colors[i % colors.length],
+      size: 1.5 + Math.random() * 2,
+      noGravity: true,
+    });
+  }
 }
 
 function flashValue(elementId) {
@@ -586,13 +788,31 @@ function spawnCollapseBurst(boardX, boardY) {
   }
 }
 
-function triggerShake() {
+function triggerShake(intensity) {
   const board = document.getElementById('board');
   if (!board) return;
-  board.classList.remove('shaking');
+  const tier = Math.max(1, Math.min(4, intensity || 2));
+  const durations = { 1: 200, 2: 300, 3: 400, 4: 500 };
+  const cls = 'shake-' + tier;
+  board.classList.remove('shake-1', 'shake-2', 'shake-3', 'shake-4', 'shaking');
   void board.offsetWidth; // force reflow
-  board.classList.add('shaking');
-  setTimeout(() => board.classList.remove('shaking'), 300);
+  board.classList.add(cls);
+  setTimeout(() => board.classList.remove(cls), durations[tier]);
+}
+
+function spawnScreenFlash(color, opacity, duration) {
+  const flash = document.createElement('div');
+  flash.className = 'screen-flash';
+  flash.style.background = color || 'white';
+  flash.style.opacity = String(opacity != null ? opacity : 0.8);
+  flash.style.animation = 'none';
+  document.body.appendChild(flash);
+  // Fade out manually
+  requestAnimationFrame(() => {
+    flash.style.transition = 'opacity ' + (duration || 300) + 'ms ease-out';
+    flash.style.opacity = '0';
+  });
+  setTimeout(() => flash.remove(), (duration || 300) + 50);
 }
 
 // ================================================================
@@ -602,6 +822,76 @@ function triggerShake() {
 function spawnDeathAnimation(boardX, boardY, pieceType, team, deathStyle) {
   const pos = boardToScreen(boardX, boardY);
   if (!pos) return;
+
+  // Piece-specific death cinematics
+  if (pieceType === 'reaper') {
+    // Desaturation flash on board + soul particle
+    const boardEl = document.getElementById('board');
+    if (boardEl) {
+      boardEl.classList.remove('board-desaturate');
+      void boardEl.offsetWidth;
+      boardEl.classList.add('board-desaturate');
+      setTimeout(() => boardEl.classList.remove('board-desaturate'), 200);
+    }
+    if (particlesEnabled) {
+      const life = 1.2;
+      particles.push({
+        x: pos.x, y: pos.y,
+        vx: (Math.random() - 0.5) * 5,
+        vy: -(20 + Math.random() * 10),
+        life: life, maxLife: life,
+        color: '#ffffff',
+        size: 4,
+        noGravity: true,
+      });
+    }
+  } else if (pieceType === 'void') {
+    // Inversion flash on board + purple implosion particles
+    const boardEl = document.getElementById('board');
+    if (boardEl) {
+      boardEl.classList.remove('board-invert');
+      void boardEl.offsetWidth;
+      boardEl.classList.add('board-invert');
+      setTimeout(() => boardEl.classList.remove('board-invert'), 170);
+    }
+    if (particlesEnabled) {
+      const colors = ['#8844cc', '#6622aa', '#aa66ff', '#4400aa'];
+      for (let i = 0; i < 8; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 30 + Math.random() * 20;
+        const life = 0.4 + Math.random() * 0.2;
+        particles.push({
+          x: pos.x + Math.cos(angle) * dist,
+          y: pos.y + Math.sin(angle) * dist,
+          vx: -Math.cos(angle) * 60,
+          vy: -Math.sin(angle) * 60,
+          life: life, maxLife: life,
+          color: colors[i % colors.length],
+          size: 2 + Math.random() * 2,
+          noGravity: true,
+        });
+      }
+    }
+  } else if (pieceType === 'gambler') {
+    // Gold coin particles scatter outward
+    if (particlesEnabled) {
+      const colors = ['#ffd700', '#ffec80', '#e8c060', '#ffc832'];
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * 2 / 8) * i + Math.random() * 0.3;
+        const speed = 80 + Math.random() * 50;
+        const life = 0.5 + Math.random() * 0.3;
+        particles.push({
+          x: pos.x, y: pos.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: life, maxLife: life,
+          color: colors[i % colors.length],
+          size: 2.5 + Math.random() * 2,
+          noGravity: false,
+        });
+      }
+    }
+  }
 
   // Create temporary ghost element at piece's last position
   const boardEl = document.getElementById('board');
@@ -758,12 +1048,8 @@ function spawnGoldSparkle() {
 // ================================================================
 
 function triggerBossEntrance() {
-  // Full-screen flash
-  const flash = document.createElement('div');
-  flash.className = 'screen-flash';
-  flash.style.background = 'white';
-  document.body.appendChild(flash);
-  setTimeout(() => flash.remove(), 400);
+  // Red flash instead of white
+  spawnScreenFlash('#ff2222', 0.3, 400);
 
   // Board container vignette
   const bc = document.getElementById('board-container');
@@ -774,7 +1060,14 @@ function triggerBossEntrance() {
     setTimeout(() => bc.classList.remove('boss-entrance'), 1200);
   }
 
-  triggerShake();
+  // Dark vignette overlay that persists during intro
+  const vignette = document.createElement('div');
+  vignette.className = 'boss-vignette';
+  document.body.appendChild(vignette);
+  setTimeout(() => vignette.remove(), 1500);
+
+  // Extreme shake
+  triggerShake(4);
 }
 
 function triggerVictoryEffect() {
@@ -826,6 +1119,80 @@ function spawnShockwaveRing(boardX, boardY, color) {
     ringRadius: 5,
     ringMaxRadius: 60,
   });
+}
+
+// ================================================================
+// CINEMATIC: COMBO COUNTER
+// ================================================================
+
+function showComboCounter(count) {
+  const existing = document.querySelector('.combo-counter');
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.className = 'combo-counter';
+  el.textContent = 'x' + count;
+
+  if (count >= 4) {
+    el.classList.add('combo-x4');
+    triggerShake(3);
+    spawnDamageParticleBurst(window.innerWidth / 2, window.innerHeight * 0.3, '#ffd700');
+  } else if (count >= 3) {
+    el.classList.add('combo-x3');
+    triggerShake(2);
+  } else {
+    el.classList.add('combo-x2');
+  }
+
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 850);
+}
+
+// ================================================================
+// CINEMATIC: SYNERGY POP-OFF
+// ================================================================
+
+function showSynergyPopoff(name, icon, color) {
+  const el = document.createElement('div');
+  el.className = 'synergy-popoff';
+  el.style.color = color;
+  el.textContent = icon + ' ' + name;
+  document.body.appendChild(el);
+  triggerShake(1);
+  setTimeout(() => el.remove(), 1300);
+}
+
+// ================================================================
+// CINEMATIC: PIECE-SPECIFIC DEATH EFFECTS
+// ================================================================
+
+function spawnPhoenixReviveEffect(boardX, boardY) {
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  spawnScreenFlash('#ff6622', 0.2, 250);
+  if (!particlesEnabled) return;
+  const colors = ['#ff4400', '#ff8800', '#ffcc00', '#ff6622'];
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 50;
+    const life = 0.4 + Math.random() * 0.3;
+    particles.push({
+      x: pos.x, y: pos.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: colors[i % colors.length],
+      size: 2 + Math.random() * 2,
+      noGravity: true,
+    });
+  }
+}
+
+function spawnTimeMageRewindEffect() {
+  const overlay = document.createElement('div');
+  overlay.className = 'scanline-overlay';
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 250);
 }
 
 // ================================================================
@@ -914,26 +1281,6 @@ function spawnDefeatEmbers() {
   }
 }
 
-function spawnBossRing(boardX, boardY) {
-  if (!particlesEnabled) return;
-  const pos = boardToScreen(boardX, boardY);
-  if (!pos) return;
-  for (let i = 0; i < 20; i++) {
-    const angle = (Math.PI * 2 / 20) * i;
-    const speed = 60 + Math.random() * 40;
-    const life = 0.8 + Math.random() * 0.3;
-    particles.push({
-      x: pos.x, y: pos.y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: life, maxLife: life,
-      color: '#ff4646',
-      size: 2 + Math.random() * 2,
-      noGravity: true,
-    });
-  }
-}
-
 let lastParticleTime = 0;
 let ambientTimer = 0;
 let auraTimer = 0;
@@ -985,6 +1332,272 @@ function spawnModifierAuras(dt) {
   }
 }
 
+// ================================================================
+// COMBAT EFFECT SPAWNERS
+// ================================================================
+
+function spawnFireProjectile(fromBX, fromBY, toBX, toBY) {
+  if (!particlesEnabled) return;
+  const from = boardToScreen(fromBX, fromBY);
+  const to = boardToScreen(toBX, toBY);
+  if (!from || !to) return;
+  const colors = ['#ff4400', '#ff8800', '#ffcc00', '#ff2200'];
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const perpX = -dy / dist, perpY = dx / dist;
+  for (let i = 0; i < 18; i++) {
+    const delay = Math.random() * 200;
+    const travelTime = 0.25 + Math.random() * 0.1;
+    const arc = (Math.random() - 0.5) * 20;
+    setTimeout(() => {
+      if (!particlesEnabled) return;
+      const life = travelTime + 0.1;
+      particles.push({
+        x: from.x + (Math.random() - 0.5) * 6,
+        y: from.y + (Math.random() - 0.5) * 6,
+        vx: dx / travelTime + perpX * arc,
+        vy: dy / travelTime + perpY * arc - 15,
+        life: life, maxLife: life,
+        color: colors[i % colors.length],
+        size: 2 + Math.random() * 2,
+        noGravity: true,
+        trail: true,
+      });
+    }, delay);
+  }
+  // Impact burst at target after travel time
+  setTimeout(() => {
+    if (!particlesEnabled) return;
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 40;
+      const life = 0.3 + Math.random() * 0.2;
+      particles.push({
+        x: to.x, y: to.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: life, maxLife: life,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 2 + Math.random() * 2,
+        noGravity: true,
+      });
+    }
+  }, 250);
+  spawnScreenFlash('#ff6600', 0.15, 200);
+}
+
+function spawnLightningChain(fromBX, fromBY, toBX, toBY, color) {
+  if (!particlesEnabled) return;
+  const from = boardToScreen(fromBX, fromBY);
+  const to = boardToScreen(toBX, toBY);
+  if (!from || !to) return;
+  color = color || '#44ddff';
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const perpX = -dy / dist, perpY = dx / dist;
+  // Generate jagged midpoints
+  const segments = 6 + Math.floor(Math.random() * 3);
+  const pts = [{x: from.x, y: from.y}];
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const offset = (Math.random() - 0.5) * 30;
+    pts.push({
+      x: from.x + dx * t + perpX * offset,
+      y: from.y + dy * t + perpY * offset,
+    });
+  }
+  pts.push({x: to.x, y: to.y});
+  // Main bolt
+  const life = 0.3;
+  const bolt = {
+    x: 0, y: 0, vx: 0, vy: 0,
+    life: life, maxLife: life,
+    color: color,
+    size: 0,
+    noGravity: true,
+    lightning: true,
+    lightningPts: pts,
+  };
+  // 30% chance for a fork from a random midpoint
+  if (Math.random() < 0.3 && pts.length > 3) {
+    const forkIdx = 1 + Math.floor(Math.random() * (pts.length - 3));
+    const forkStart = pts[forkIdx];
+    const forkAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.2;
+    const forkLen = dist * (0.3 + Math.random() * 0.2);
+    const forkPts = [{x: forkStart.x, y: forkStart.y}];
+    for (let i = 1; i <= 3; i++) {
+      const t = i / 3;
+      forkPts.push({
+        x: forkStart.x + Math.cos(forkAngle) * forkLen * t + (Math.random() - 0.5) * 10,
+        y: forkStart.y + Math.sin(forkAngle) * forkLen * t + (Math.random() - 0.5) * 10,
+      });
+    }
+    bolt.lightningFork = forkPts;
+  }
+  particles.push(bolt);
+  // Impact sparks at target
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 30;
+    const sLife = 0.2 + Math.random() * 0.15;
+    particles.push({
+      x: to.x + (Math.random() - 0.5) * 6,
+      y: to.y + (Math.random() - 0.5) * 6,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: sLife, maxLife: sLife,
+      color: '#ffffff',
+      size: 1.5 + Math.random(),
+      noGravity: true,
+    });
+  }
+}
+
+function spawnExplosion(boardX, boardY) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  const outerColors = ['#ff8800', '#ffcc00'];
+  const innerColors = ['#ffffff', '#ffffcc'];
+  // 30 radial burst particles
+  for (let i = 0; i < 30; i++) {
+    const angle = (Math.PI * 2 / 30) * i + Math.random() * 0.2;
+    const speed = 150 + Math.random() * 100;
+    const life = 0.3 + Math.random() * 0.2;
+    const isInner = i < 8;
+    particles.push({
+      x: pos.x + (Math.random() - 0.5) * 4,
+      y: pos.y + (Math.random() - 0.5) * 4,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: isInner ? innerColors[i % 2] : outerColors[i % 2],
+      size: isInner ? 3 + Math.random() * 2 : 2 + Math.random() * 3,
+      noGravity: true,
+    });
+  }
+  // 3 concentric shockwave rings
+  for (let r = 0; r < 3; r++) {
+    setTimeout(() => {
+      particles.push({
+        x: pos.x, y: pos.y,
+        vx: 0, vy: 0,
+        life: 0.4, maxLife: 0.4,
+        color: r === 0 ? '#ffffff' : '#ff8800',
+        size: 0,
+        noGravity: true,
+        ring: true,
+        ringRadius: 5 + r * 8,
+        ringMaxRadius: 70 + r * 20,
+      });
+    }, r * 60);
+  }
+  triggerShake(3);
+  spawnScreenFlash('#ffffff', 0.3, 200);
+  // Brief heat distortion on board
+  const boardEl = document.getElementById('board');
+  if (boardEl) {
+    boardEl.style.filter = 'contrast(1.2) brightness(1.1)';
+    setTimeout(() => { boardEl.style.filter = ''; }, 200);
+  }
+}
+
+function spawnShadowTrail(fromBX, fromBY, toBX, toBY) {
+  if (!particlesEnabled) return;
+  const from = boardToScreen(fromBX, fromBY);
+  const to = boardToScreen(toBX, toBY);
+  if (!from || !to) return;
+  const colors = ['#1a0033', '#330066', '#220044'];
+  const dx = to.x - from.x, dy = to.y - from.y;
+  for (let i = 0; i < 8; i++) {
+    const t = i / 7;
+    const life = 0.3 + Math.random() * 0.15;
+    particles.push({
+      x: from.x + dx * t + (Math.random() - 0.5) * 10,
+      y: from.y + dy * t + (Math.random() - 0.5) * 10,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -(5 + Math.random() * 10),
+      life: life, maxLife: life,
+      color: colors[i % colors.length],
+      size: 3 + Math.random() * 2,
+      noGravity: true,
+    });
+  }
+}
+
+function spawnAssassinVignette() {
+  const vig = document.createElement('div');
+  vig.className = 'assassin-vignette';
+  document.body.appendChild(vig);
+  setTimeout(() => vig.remove(), 400);
+}
+
+function spawnBerserkerRagePulse(boardX, boardY) {
+  if (!particlesEnabled) return;
+  const pos = boardToScreen(boardX, boardY);
+  if (!pos) return;
+  // Red shockwave ring
+  particles.push({
+    x: pos.x, y: pos.y,
+    vx: 0, vy: 0,
+    life: 0.4, maxLife: 0.4,
+    color: '#ff2200',
+    size: 0,
+    noGravity: true,
+    ring: true,
+    ringRadius: 5,
+    ringMaxRadius: 50,
+  });
+  // 6 aggressive red particles
+  const colors = ['#ff2200', '#cc0000', '#ff4400'];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI * 2 / 6) * i + Math.random() * 0.3;
+    const speed = 60 + Math.random() * 40;
+    const life = 0.3 + Math.random() * 0.2;
+    particles.push({
+      x: pos.x, y: pos.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: life, maxLife: life,
+      color: colors[i % colors.length],
+      size: 2 + Math.random() * 2,
+      noGravity: true,
+    });
+  }
+  spawnScreenFlash('#ff2200', 0.12, 100);
+  triggerShake(1);
+}
+
+function spawnHealBeam(fromBX, fromBY, toBX, toBY) {
+  if (!particlesEnabled) return;
+  const from = boardToScreen(fromBX, fromBY);
+  const to = boardToScreen(toBX, toBY);
+  if (!from || !to) return;
+  const colors = ['#44ff88', '#88ffaa', '#ffd700'];
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const perpX = -dy / dist, perpY = dx / dist;
+  for (let i = 0; i < 10; i++) {
+    const delay = i * 25;
+    setTimeout(() => {
+      if (!particlesEnabled) return;
+      const t = i / 9;
+      const arc = Math.sin(t * Math.PI) * 20;
+      const life = 0.4 + Math.random() * 0.2;
+      particles.push({
+        x: from.x + dx * t + perpX * arc + (Math.random() - 0.5) * 4,
+        y: from.y + dy * t + perpY * arc + (Math.random() - 0.5) * 4,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -(3 + Math.random() * 5),
+        life: life, maxLife: life,
+        color: colors[i % colors.length],
+        size: 1.5 + Math.random() * 1.5 + Math.sin(Date.now() * 0.01) * 0.5,
+        noGravity: true,
+      });
+    }, delay);
+  }
+}
+
 function updateParticles(time) {
   requestAnimationFrame(updateParticles);
   if (!particleCtx) return;
@@ -1016,31 +1629,95 @@ function updateParticles(time) {
   }
 
   // Cap particle count for performance
-  if (particles.length > 200) {
-    particles.splice(0, particles.length - 200);
+  if (particles.length > 400) {
+    particles.splice(0, particles.length - 400);
   }
 
   particleCtx.clearRect(0, 0, particleCtx.canvas.width, particleCtx.canvas.height);
   particleCtx.globalCompositeOperation = 'lighter';
 
-  for (let i = particles.length - 1; i >= 0; i--) {
+  // Trail particle spawning — fire trails spawn child particles
+  const trailSpawns = [];
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    if (p.trail && p.life > 0.3 * p.maxLife) {
+      p._trailFrame = (p._trailFrame || 0) + 1;
+      if (p._trailFrame % 2 === 0) {
+        trailSpawns.push({
+          x: p.x + (Math.random() - 0.5) * 4,
+          y: p.y + (Math.random() - 0.5) * 4,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8 - 5,
+          life: p.maxLife * 0.4, maxLife: p.maxLife * 0.4,
+          color: p.color,
+          size: p.size * 0.5,
+          noGravity: true,
+        });
+      }
+    }
+  }
+  for (const ts of trailSpawns) particles.push(ts);
+
+  // Single-pass update + draw with in-place compaction (avoids O(n^2) splice)
+  let alive = 0;
+  for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
     p.life -= dt;
-    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (p.life <= 0) continue;
 
-    // Wobble
-    p.vx += (Math.random() - 0.5) * 40 * dt;
-
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    if (!p.noGravity) p.vy += 120 * dt; // gravity
+    // Wobble (skip for lightning)
+    if (!p.lightning) {
+      p.vx += (Math.random() - 0.5) * 40 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (!p.noGravity) p.vy += 120 * dt; // gravity
+    }
 
     const alpha = p.ambient ? 0.15 : Math.max(0, p.life / p.maxLife);
     particleCtx.globalAlpha = alpha;
     particleCtx.fillStyle = p.color;
 
+    // Lightning bolt — jagged line segments with glow
+    if (p.lightning) {
+      // Jitter 2-3 random midpoints for crackling feel
+      const pts = p.lightningPts;
+      for (let j = 0; j < 3; j++) {
+        const idx = 1 + Math.floor(Math.random() * (pts.length - 2));
+        if (idx > 0 && idx < pts.length - 1) {
+          pts[idx].x += (Math.random() - 0.5) * 6;
+          pts[idx].y += (Math.random() - 0.5) * 6;
+        }
+      }
+      // Thick dim glow layer
+      particleCtx.strokeStyle = p.color;
+      particleCtx.lineWidth = 6 * alpha;
+      particleCtx.globalAlpha = alpha * 0.4;
+      particleCtx.beginPath();
+      particleCtx.moveTo(pts[0].x, pts[0].y);
+      for (let j = 1; j < pts.length; j++) particleCtx.lineTo(pts[j].x, pts[j].y);
+      particleCtx.stroke();
+      // Thin bright core
+      particleCtx.strokeStyle = '#ffffff';
+      particleCtx.lineWidth = 2 * alpha;
+      particleCtx.globalAlpha = alpha;
+      particleCtx.beginPath();
+      particleCtx.moveTo(pts[0].x, pts[0].y);
+      for (let j = 1; j < pts.length; j++) particleCtx.lineTo(pts[j].x, pts[j].y);
+      particleCtx.stroke();
+      // Draw fork if present
+      if (p.lightningFork) {
+        const fk = p.lightningFork;
+        particleCtx.strokeStyle = p.color;
+        particleCtx.lineWidth = 3 * alpha;
+        particleCtx.globalAlpha = alpha * 0.5;
+        particleCtx.beginPath();
+        particleCtx.moveTo(fk[0].x, fk[0].y);
+        for (let j = 1; j < fk.length; j++) particleCtx.lineTo(fk[j].x, fk[j].y);
+        particleCtx.stroke();
+      }
+    }
     // Ring particles — expanding circle outline
-    if (p.ring) {
+    else if (p.ring) {
       const progress = 1 - (p.life / p.maxLife);
       const radius = p.ringRadius + (p.ringMaxRadius - p.ringRadius) * progress;
       particleCtx.strokeStyle = p.color;
@@ -1061,7 +1738,10 @@ function updateParticles(time) {
       particleCtx.arc(p.x, p.y, p.size * (p.ambient ? 1 : alpha), 0, Math.PI * 2);
       particleCtx.fill();
     }
+
+    particles[alive++] = p;
   }
+  particles.length = alive;
   particleCtx.globalCompositeOperation = 'source-over';
   particleCtx.globalAlpha = 1;
 }
@@ -1084,6 +1764,7 @@ function render(state) {
   if (phase !== 'elo_shop') eloShopBuilt = false;
   if (phase !== 'shop') shopBuilt = false;
   if (phase !== 'draft') draftBuilt = false;
+  if (phase !== 'map') mapBuilt = false;
 
   if (phase === 'setup' || phase === 'battle') {
     document.getElementById('board-view').classList.add('active');
@@ -1097,6 +1778,9 @@ function render(state) {
   } else if (phase === 'draft') {
     document.getElementById('draft-view').classList.add('active');
     renderDraft(state, isNewPhase);
+  } else if (phase === 'map') {
+    document.getElementById('map-view').classList.add('active');
+    renderMap(state, isNewPhase);
   } else if (phase === 'place_cell' || phase === 'place_border') {
     document.getElementById('placement-view').classList.add('active');
     renderPlacement(state);
@@ -1170,6 +1854,9 @@ function renderBoardView(state) {
   document.getElementById('message-bar').textContent = state.message || '';
 }
 
+// Board cell cache — keyed by boardId
+const _boardCache = {};
+
 function renderBoard(boardId, state) {
   const boardEl = document.getElementById(boardId);
   if (!boardEl) return;
@@ -1177,6 +1864,8 @@ function renderBoard(boardId, state) {
   const grid = state.board;
   const highlights = state.highlights || {};
   const cursor = state.cursor || [-1, -1];
+  const W = state.boardWidth;
+  const H = state.boardHeight;
 
   // Turn indicator glow
   boardEl.classList.remove('player-turn', 'enemy-turn');
@@ -1184,51 +1873,101 @@ function renderBoard(boardId, state) {
     boardEl.classList.add(state.playerTurn ? 'player-turn' : 'enemy-turn');
   }
 
-  // Rebuild board cells
-  boardEl.innerHTML = '';
+  // Create cell grid once per board, reuse across renders
+  const dimKey = W + 'x' + H;
+  let cache = _boardCache[boardId];
+  // Reinit if dimensions changed or cells were detached from DOM
+  if (!cache || cache.dimKey !== dimKey || cache.cells[0].parentNode !== boardEl) {
+    boardEl.innerHTML = '';
+    const cells = [];
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const div = document.createElement('div');
+        // Stable event listeners — tooltip reads _cellData from element
+        div.addEventListener('mousedown', () => onBoardCellClick(boardId, x, y, 'mousedown'));
+        div.addEventListener('mouseup', () => onBoardCellClick(boardId, x, y, 'mouseup'));
+        div.addEventListener('mouseenter', function() {
+          onBoardCellMove(boardId, x, y);
+          if (this._cellData) {
+            const ttHtml = buildCellTooltip(this._cellData);
+            if (ttHtml) showTooltip(ttHtml, this);
+          }
+        });
+        div.addEventListener('mouseleave', hideTooltip);
+        boardEl.appendChild(div);
+        cells.push(div);
+      }
+    }
+    cache = { dimKey: dimKey, cells: cells, fps: new Array(W * H).fill('') };
+    _boardCache[boardId] = cache;
+  }
+
+  const cells = cache.cells;
+  const fps = cache.fps;
   const slidingPieces = [];
 
-  for (let y = 0; y < state.boardHeight; y++) {
-    for (let x = 0; x < state.boardWidth; x++) {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const idx = y * W + x;
+      const div = cells[idx];
       const cell = grid[y][x];
-      const div = document.createElement('div');
+      const key = x + ',' + y;
+
+      // Store current cell data for tooltip handler
+      div._cellData = cell;
+
+      // Update cell classes (always — these change with cursor/highlights)
       const isLight = (x + y) % 2 === 0;
-      div.className = 'cell ' + (isLight ? 'light' : 'dark');
+      let cls = 'cell ' + (isLight ? 'light' : 'dark');
+      if (highlights[key]) cls += ' highlight-' + highlights[key];
+      if (x === cursor[0] && y === cursor[1]) cls += ' cursor-active';
+      if (cell.deadZone) cls += ' dead-zone';
+      else if (cell.blocked) cls += ' blocked';
+      if (cell.warningZone) cls += ' warning-zone';
+      if (cell.borderMod) cls += ' has-border-mod';
+      if (div.className !== cls) div.className = cls;
 
-      // Highlights
-      const hlKey = x + ',' + y;
-      if (highlights[hlKey]) {
-        div.classList.add('highlight-' + highlights[hlKey]);
+      // Border mod style
+      if (cell.borderMod) {
+        div.style.setProperty('--border-mod-color', 'rgb(' + cell.borderMod.color.join(',') + ')');
+      } else {
+        div.style.removeProperty('--border-mod-color');
       }
 
-      // Cursor
-      if (x === cursor[0] && y === cursor[1]) {
-        div.classList.add('cursor-active');
+      // Build content fingerprint — skip child rebuild if unchanged
+      let fp = '';
+      if (cell.cellMod) fp += 'cm:' + cell.cellMod.name;
+      if (cell.borderMod) fp += '|bm:' + cell.borderMod.name;
+      if (cell.piece) {
+        fp += '|p:' + cell.piece.type + ':' + cell.piece.team;
+        fp += ':' + cell.piece.hp + '/' + cell.piece.maxHp;
+        if (cell.piece.modifiers) {
+          for (const mod of cell.piece.modifiers) fp += ':' + mod.effect;
+        }
+        if (cell.piece.lastAction && cell.piece.lastAction.type === 'attack') fp += ':atk';
       }
+      if (pendingSlides[key]) fp += '|sl';
+      if (pendingSpawns[key]) fp += '|sp';
+      if (pendingHits[key]) fp += '|ht';
 
-      // Blocked
-      if (cell.deadZone) {
-        div.classList.add('dead-zone');
-      } else if (cell.blocked) {
-        div.classList.add('blocked');
-      }
-      if (cell.warningZone) {
-        div.classList.add('warning-zone');
-      }
+      if (fp === fps[idx]) continue; // unchanged — skip child DOM ops
+      fps[idx] = fp;
+
+      // Clear children (much cheaper than boardEl.innerHTML = '' for whole board)
+      while (div.firstChild) div.removeChild(div.lastChild);
+      div.title = '';
 
       // Cell modifier overlay
       if (cell.cellMod) {
         const overlay = document.createElement('div');
         overlay.className = 'cell-mod-overlay';
         overlay.style.backgroundColor = 'rgb(' + cell.cellMod.color.join(',') + ')';
-        overlay.title = cell.cellMod.name;
+        div.title = cell.cellMod.name;
         div.appendChild(overlay);
       }
 
-      // Border modifier
+      // Border modifier title
       if (cell.borderMod) {
-        div.classList.add('has-border-mod');
-        div.style.setProperty('--border-mod-color', 'rgb(' + cell.borderMod.color.join(',') + ')');
         div.title = (div.title ? div.title + ' | ' : '') + cell.borderMod.name;
       }
 
@@ -1254,20 +1993,18 @@ function renderBoard(boardId, state) {
         // Attack lunge animation
         if (cell.piece.lastAction && cell.piece.lastAction.type === 'attack') {
           const la = cell.piece.lastAction;
-          const lungeX = la.targetX - la.fromX;
-          const lungeY = la.targetY - la.fromY;
-          pieceEl.style.setProperty('--lunge-x', lungeX || 0);
-          pieceEl.style.setProperty('--lunge-y', lungeY || 0);
+          pieceEl.style.setProperty('--lunge-x', (la.targetX - la.fromX) || 0);
+          pieceEl.style.setProperty('--lunge-y', (la.targetY - la.fromY) || 0);
           pieceEl.classList.add('piece-attacking');
         }
 
-        // Spawn animation — detected via frame diffing in detectAnimations
-        if (pendingSpawns[x + ',' + y]) {
+        // Spawn animation
+        if (pendingSpawns[key]) {
           pieceEl.classList.add('piece-spawning');
         }
 
-        // Damage flash — detected via frame diffing in detectAnimations
-        if (pendingHits[x + ',' + y]) {
+        // Damage flash
+        if (pendingHits[key]) {
           pieceEl.classList.add('piece-hit');
         }
 
@@ -1293,50 +2030,33 @@ function renderBoard(boardId, state) {
         }
 
         // Apply slide animation if this piece just moved here
-        const slideKey = x + ',' + y;
-        const slide = pendingSlides[slideKey];
+        const slide = pendingSlides[key];
         if (slide) {
-          // Start at the old position (offset back), then transition to (0,0)
-          const dx = (slide.fromX - x) * 100; // percentage of cell width
+          const dx = (slide.fromX - x) * 100;
           const dy = (slide.fromY - y) * 100;
           pieceEl.style.transform = 'translate(' + dx + '%, ' + dy + '%)';
           pieceEl.classList.add('sliding');
-          // Force layout, then remove transform to trigger transition
           slidingPieces.push(pieceEl);
         }
 
         div.appendChild(pieceEl);
       }
-
-      // Click handlers
-      div.addEventListener('mousedown', () => onBoardCellClick(boardId, x, y, 'mousedown'));
-      div.addEventListener('mouseup', () => onBoardCellClick(boardId, x, y, 'mouseup'));
-      div.addEventListener('mouseenter', () => {
-        onBoardCellMove(boardId, x, y);
-        const ttHtml = buildCellTooltip(cell);
-        if (ttHtml) showTooltip(ttHtml, div);
-      });
-      div.addEventListener('mouseleave', hideTooltip);
-
-      boardEl.appendChild(div);
     }
   }
 
   // Flush slide animations: force layout read, then clear transforms
   if (slidingPieces.length > 0) {
-    // Force browser to compute the initial transform position
     void boardEl.offsetHeight;
     requestAnimationFrame(() => {
       for (const el of slidingPieces) {
         el.style.transform = 'translate(0, 0)';
       }
-      // Clean up after transition finishes
       setTimeout(() => {
         for (const el of slidingPieces) {
           el.style.transform = '';
           el.classList.remove('sliding');
         }
-      }, 220); // slightly longer than the 200ms transition
+      }, 220);
     });
   }
 
@@ -1724,6 +2444,305 @@ function renderShop(state, animate) {
 // DRAFT RENDERER
 // ================================================================
 
+// ================================================================
+// ENCOUNTER MAP RENDERER
+// ================================================================
+
+let mapBuilt = false;
+
+function renderMap(state, animate) {
+  const container = document.getElementById('map-nodes-container');
+  const segInfo = document.getElementById('map-segment-info');
+  const mapData = state.mapData;
+
+  if (!mapData) return;
+
+  const floors = mapData.floors || [];
+  const currentFloor = mapData.currentFloor;
+  const choices = mapData.choices || [];
+  const hasBoss = mapData.hasBoss;
+  const bossNode = mapData.bossNode;
+
+  // Segment info
+  if (hasBoss && bossNode) {
+    segInfo.textContent = 'Round ' + (mapData.bossIndex + 1) + ' / ' + mapData.totalBosses;
+  } else {
+    segInfo.textContent = 'Floor ' + (currentFloor + 1) + ' / ' + floors.length;
+  }
+
+  if (!mapBuilt || animate) {
+    mapBuilt = true;
+    container.innerHTML = '';
+
+    let nodeDelay = 0;
+
+    // Boss row at TOP — wax seal destination
+    if (hasBoss && bossNode) {
+      const bossRow = document.createElement('div');
+      bossRow.className = 'map-boss-row';
+
+      const bNode = document.createElement('div');
+      bNode.className = 'map-boss-node';
+      bNode.dataset.floor = 'boss';
+
+      if (currentFloor < floors.length) {
+        bNode.classList.add('future');
+      }
+
+      const bIcon = document.createElement('div');
+      bIcon.className = 'boss-icon';
+      bIcon.textContent = pieceChar(bossNode.type, 'enemy');
+      bNode.appendChild(bIcon);
+
+      const bName = document.createElement('div');
+      bName.className = 'boss-name';
+      bName.textContent = bossNode.name;
+      bNode.appendChild(bName);
+
+      bossRow.appendChild(bNode);
+
+      // "BOSS" label as a separate div below the seal
+      const bLabel = document.createElement('div');
+      bLabel.className = 'map-boss-label';
+      bLabel.textContent = 'BOSS';
+      bossRow.appendChild(bLabel);
+
+      container.appendChild(bossRow);
+    }
+
+    // Build floor rows in REVERSE order (last floor at top, first at bottom)
+    for (let fi = floors.length - 1; fi >= 0; fi--) {
+      const floor = floors[fi];
+      const row = document.createElement('div');
+      row.className = 'map-floor-row';
+      row.dataset.floor = fi;
+
+      if (fi < currentFloor) {
+        row.classList.add('completed');
+      } else if (fi === currentFloor) {
+        row.classList.add('current');
+      } else {
+        row.classList.add('future');
+      }
+
+      for (let ni = 0; ni < floor.length; ni++) {
+        const enc = floor[ni];
+        const node = document.createElement('div');
+        node.className = 'map-node';
+        node.dataset.floor = fi;
+        node.dataset.node = ni;
+        node.style.setProperty('--node-delay', nodeDelay);
+        nodeDelay += 60;
+
+        // Mark chosen nodes
+        if (fi < currentFloor && choices[fi] === ni) {
+          node.classList.add('chosen');
+        }
+
+        // --- Header row: icon + label + gold ---
+        const header = document.createElement('div');
+        header.className = 'map-node-header';
+
+        const icon = document.createElement('span');
+        icon.className = 'map-node-icon';
+        icon.textContent = '\u2694';
+        header.appendChild(icon);
+
+        const label = document.createElement('span');
+        label.className = 'map-node-label';
+        label.textContent = enc.enemy_count_base + ' foes';
+        header.appendChild(label);
+
+        const goldLabel = document.createElement('span');
+        goldLabel.className = 'map-node-gold';
+        goldLabel.textContent = enc.reward_gold_min + '-' + enc.reward_gold_max + 'g';
+        header.appendChild(goldLabel);
+
+        node.appendChild(header);
+
+        // --- Inline modifiers ---
+        const mods = enc.modifiers || [];
+        if (mods.length > 0) {
+          // Ink divider between header and mods
+          const divider = document.createElement('div');
+          divider.className = 'map-node-divider';
+          node.appendChild(divider);
+
+          const modsContainer = document.createElement('div');
+          modsContainer.className = 'map-node-mods';
+
+          for (let mi = 0; mi < mods.length; mi++) {
+            const mod = mods[mi];
+            const modEl = document.createElement('div');
+            modEl.className = 'map-node-mod';
+            if (mod.color) {
+              modEl.style.borderLeftColor = 'rgb(' + mod.color[0] + ',' + mod.color[1] + ',' + mod.color[2] + ')';
+            }
+
+            const modName = document.createElement('div');
+            modName.className = 'map-node-mod-name';
+            if (mod.icon) {
+              const modIcon = document.createElement('span');
+              modIcon.className = 'mod-icon';
+              modIcon.textContent = mod.icon;
+              modName.appendChild(modIcon);
+            }
+            modName.appendChild(document.createTextNode(mod.name || ''));
+            modEl.appendChild(modName);
+
+            if (mod.description) {
+              const modDesc = document.createElement('div');
+              modDesc.className = 'map-node-mod-desc';
+              modDesc.textContent = mod.description;
+              modEl.appendChild(modDesc);
+            }
+
+            modsContainer.appendChild(modEl);
+          }
+
+          node.appendChild(modsContainer);
+        }
+
+        // --- Guaranteed drops ---
+        if (enc.guaranteed_drops && enc.guaranteed_drops.length > 0) {
+          const dropsEl = document.createElement('div');
+          dropsEl.className = 'map-node-drops';
+          var labels = enc.guaranteed_drops.map(function(d) {
+            if (d === 'artifact') return '\u2B50 artifact';
+            if (d === 'legendary_chance') return '\u2728 legendary%';
+            return d;
+          });
+          dropsEl.textContent = labels.join(', ');
+          node.appendChild(dropsEl);
+        }
+
+        // --- Events: current floor only ---
+        if (fi === currentFloor) {
+          node.addEventListener('mouseenter', (function(idx) {
+            return function() {
+              pywebview.api.set_selection(idx).then(handleStateUpdate).catch(console.error);
+            };
+          })(ni));
+
+          node.addEventListener('click', (function(idx) {
+            return function() {
+              pywebview.api.set_selection(idx).then(function() {
+                pywebview.api.send_action('CONFIRM', -1, -1).then(handleStateUpdate).catch(console.error);
+              }).catch(console.error);
+            };
+          })(ni));
+        }
+
+        row.appendChild(node);
+      }
+
+      container.appendChild(row);
+    }
+
+    // Draw SVG paths after DOM is built
+    requestAnimationFrame(function() {
+      drawMapPaths(mapData);
+    });
+  }
+
+  // Update selection highlight on current floor
+  const allNodes = container.querySelectorAll('.map-floor-row.current .map-node');
+  for (let n = 0; n < allNodes.length; n++) {
+    allNodes[n].classList.toggle('selected', n === mapData.selection);
+  }
+}
+
+function drawMapPaths(mapData) {
+  var svg = document.getElementById('map-paths');
+  var container = document.getElementById('map-nodes-container');
+  if (!svg || !container) return;
+
+  svg.innerHTML = '';
+
+  var containerRect = container.getBoundingClientRect();
+  svg.setAttribute('width', containerRect.width);
+  svg.setAttribute('height', containerRect.height);
+
+  var floors = mapData.floors || [];
+  var currentFloor = mapData.currentFloor;
+  var choices = mapData.choices || [];
+
+  // Helper: draw ink-style cubic bezier path between two elements
+  function drawInkPath(upperEl, lowerEl, cls, floorIdx) {
+    var uRect = upperEl.getBoundingClientRect();
+    var lRect = lowerEl.getBoundingClientRect();
+    var x1 = lRect.left + lRect.width / 2 - containerRect.left;
+    var y1 = lRect.top - containerRect.top;
+    var x2 = uRect.left + uRect.width / 2 - containerRect.left;
+    var y2 = uRect.top + uRect.height - containerRect.top;
+
+    // Seeded wobble for hand-drawn feel (stable across re-renders)
+    var seed = (floorIdx * 127 + Math.round(x1) * 31 + Math.round(x2) * 17) % 100;
+    var wobbleX = ((seed % 20) - 10) * 0.8;
+    var wobbleY = ((seed % 15) - 7) * 0.5;
+
+    var midY = (y1 + y2) / 2;
+    var cp1x = x1 + wobbleX;
+    var cp1y = midY + wobbleY;
+    var cp2x = x2 - wobbleX;
+    var cp2y = midY - wobbleY;
+
+    var d = 'M ' + x1 + ' ' + y1 + ' C ' + cp1x + ' ' + cp1y + ', ' + cp2x + ' ' + cp2y + ', ' + x2 + ' ' + y2;
+
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.classList.add(cls);
+    svg.appendChild(path);
+  }
+
+  // Connect adjacent floor rows
+  for (var fi = 0; fi < floors.length - 1; fi++) {
+    var lowerRow = container.querySelector('[data-floor="' + fi + '"].map-floor-row');
+    var upperRow = container.querySelector('[data-floor="' + (fi + 1) + '"].map-floor-row');
+    if (!lowerRow || !upperRow) continue;
+
+    var lowerNodes = lowerRow.querySelectorAll('.map-node');
+    var upperNodes = upperRow.querySelectorAll('.map-node');
+
+    for (var li = 0; li < lowerNodes.length; li++) {
+      for (var ui = 0; ui < upperNodes.length; ui++) {
+        var cls;
+        if (fi < currentFloor - 1) {
+          if (choices[fi] === li && choices[fi + 1] === ui) {
+            cls = 'path-chosen';
+          } else {
+            cls = 'path-dimmed';
+          }
+        } else if (fi === currentFloor - 1 && fi < choices.length) {
+          if (choices[fi] === li) {
+            cls = 'path-chosen';
+          } else {
+            cls = 'path-dimmed';
+          }
+        } else if (fi >= currentFloor) {
+          cls = 'path-future';
+        } else {
+          cls = 'path-dimmed';
+        }
+        drawInkPath(upperNodes[ui], lowerNodes[li], cls, fi);
+      }
+    }
+  }
+
+  // Paths from last floor to boss node
+  if (mapData.hasBoss) {
+    var lastFloorIdx = floors.length - 1;
+    var lastRow = container.querySelector('[data-floor="' + lastFloorIdx + '"].map-floor-row');
+    var bossEl = container.querySelector('.map-boss-node');
+    if (lastRow && bossEl) {
+      var lastNodes = lastRow.querySelectorAll('.map-node');
+      for (var bi = 0; bi < lastNodes.length; bi++) {
+        drawInkPath(bossEl, lastNodes[bi], 'path-future', lastFloorIdx);
+      }
+    }
+  }
+}
+
 let draftBuilt = false;
 
 function renderDraft(state, animate) {
@@ -1750,9 +2769,46 @@ function renderDraft(state, animate) {
         card.classList.add('rarity-' + opt.rarity);
       }
 
-      // Legendary reveal animation
+      // Legendary reveal animation — enhanced cinematic
       if (opt.rarity === 'legendary' && animate) {
         card.classList.add('legendary-reveal');
+
+        // Screen dim overlay appears before legendary card
+        const dim = document.createElement('div');
+        dim.className = 'legendary-dim';
+        document.body.appendChild(dim);
+        setTimeout(() => dim.remove(), 1300);
+
+        // Extra delay so legendary enters after other cards
+        card.style.setProperty('--i', options.length + 2);
+
+        // On card land: golden particle burst + shake
+        const landDelay = (options.length + 2) * 80 + 400;
+        setTimeout(() => {
+          triggerShake(2);
+          const cardRect = card.getBoundingClientRect();
+          if (cardRect && particlesEnabled) {
+            const cx = cardRect.left + cardRect.width / 2;
+            const cy = cardRect.top + cardRect.height / 2;
+            const colors = ['#ffd700', '#ffec80', '#e8c060', '#ffffff'];
+            for (let p = 0; p < 12; p++) {
+              const angle = Math.random() * Math.PI * 2;
+              const speed = 40 + Math.random() * 50;
+              const life = 0.4 + Math.random() * 0.3;
+              particles.push({
+                x: cx, y: cy,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: life, maxLife: life,
+                color: colors[p % colors.length],
+                size: 2 + Math.random() * 2,
+                noGravity: true,
+              });
+            }
+          }
+          // Persistent golden pulse glow
+          card.classList.add('legendary-pulse-glow');
+        }, landDelay);
       }
 
       const draftRarityClass = (opt.rarity && opt.rarity !== 'common') ? ' rarity-' + opt.rarity : '';
@@ -2015,8 +3071,23 @@ function renderBossIntro(state, animate) {
     : '';
 
   if (animate) {
-    // Boss intro screen shake
-    triggerShake();
+    // Boss name slam animation
+    title.classList.remove('boss-name-slam');
+    void title.offsetWidth;
+    title.classList.add('boss-name-slam');
+
+    // Mods fade in after name lands
+    if (mods.firstChild) {
+      mods.classList.remove('boss-mods-fade');
+      void mods.offsetWidth;
+      mods.classList.add('boss-mods-fade');
+    }
+
+    // Heavy screen shake
+    triggerShake(4);
+
+    // Red flash
+    spawnScreenFlash('#ff2222', 0.25, 350);
 
     // Boss ring particles from center of screen
     if (particlesEnabled) {
@@ -2320,7 +3391,7 @@ function openChesticonOverlay() {
   document.getElementById('chessticon-overlay').className = 'overlay-visible';
   // Load data and render first tab
   loadCodexData().then(() => {
-    renderChesticonTab('chessticon-content', 'pieces');
+    renderChesticonTab('pieces');
     // Mark first tab active
     document.querySelectorAll('#chessticon-overlay .chessticon-tab').forEach(t => t.classList.remove('active'));
     const first = document.querySelector('#chessticon-overlay .chessticon-tab[data-tab="pieces"]');
@@ -2422,7 +3493,7 @@ function setupOverlayControls() {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#chessticon-overlay .chessticon-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      renderChesticonTab('chessticon-content', tab.dataset.tab);
+      renderChesticonTab(tab.dataset.tab);
     });
   });
 

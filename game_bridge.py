@@ -488,6 +488,10 @@ class GameBridge:
         elif phase == "draft":
             if hasattr(mode, 'draft_options') and row < len(mode.draft_options):
                 mode.draft_selection = row
+        elif phase == "map":
+            floor = mode.encounter_map[mode.current_floor] if mode.current_floor < len(mode.encounter_map) else []
+            if row < len(floor):
+                mode.map_selection = row
         elif phase == "place_piece_mod":
             mode.roster_selection = row
         elif phase == "swap_tarot":

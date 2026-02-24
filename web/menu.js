@@ -254,7 +254,7 @@ function openMenuChessticon() {
   currentPhase = 'chessticon';
   document.getElementById('chessticon-overlay').className = 'overlay-visible';
   loadCodexData().then(() => {
-    renderChesticonTab('chessticon-content', 'pieces');
+    renderChesticonTab('pieces');
     document.querySelectorAll('#chessticon-overlay .chessticon-tab').forEach(t => t.classList.remove('active'));
     const first = document.querySelector('#chessticon-overlay .chessticon-tab[data-tab="pieces"]');
     if (first) first.classList.add('active');
@@ -447,7 +447,7 @@ document.querySelectorAll('#chessticon-overlay .chessticon-tab').forEach(tab => 
   tab.addEventListener('click', () => {
     document.querySelectorAll('#chessticon-overlay .chessticon-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    renderChesticonTab('chessticon-content', tab.dataset.tab);
+    renderChesticonTab(tab.dataset.tab);
   });
 });
 

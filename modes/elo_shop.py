@@ -16,24 +16,24 @@ SHOP_CATALOG = [
     {"key": "tarot_slot",  "category": "Upgrade", "name": "+1 Tarot Slot",  "cost": 500, "desc": "Hold an additional Tarot card"},
     {"key": "artifact_slot", "category": "Upgrade", "name": "+1 Artifact Slot", "cost": 600, "desc": "Hold an additional Artifact"},
     # --- Starter Pieces (8) ---
-    {"key": "rook",     "category": "Piece", "name": "Rook",     "cost": 100,  "desc": "Unlock Rook for starting roster"},
+    {"key": "rook",     "category": "Piece", "name": "Rook",     "cost": 60,   "desc": "Unlock Rook for starting roster"},
     {"key": "queen",    "category": "Piece", "name": "Queen",    "cost": 150,  "desc": "Unlock Queen for starting roster"},
     {"key": "king",     "category": "Piece", "name": "King",     "cost": 200,  "desc": "Unlock King for starting roster"},
-    {"key": "bomb",     "category": "Piece", "name": "Bomb",     "cost": 120,  "desc": "Explodes on death, 10 dmg in 3x3"},
-    {"key": "leech",    "category": "Piece", "name": "Leech",    "cost": 100,  "desc": "Heals when dealing damage"},
-    {"key": "cannon",   "category": "Piece", "name": "Cannon",   "cost": 100,  "desc": "Immobile ranged attacker"},
-    {"key": "lancer",   "category": "Piece", "name": "Lancer",   "cost": 100,  "desc": "Damage scales with distance moved"},
-    {"key": "duelist",  "category": "Piece", "name": "Duelist",  "cost": 100,  "desc": "Both deal ATK simultaneously"},
+    {"key": "bomb",     "category": "Piece", "name": "Bomb",     "cost": 60,   "desc": "Explodes on death, 10 dmg in 3x3"},
+    {"key": "leech",    "category": "Piece", "name": "Leech",    "cost": 60,   "desc": "Heals when dealing damage"},
+    {"key": "cannon",   "category": "Piece", "name": "Cannon",   "cost": 60,   "desc": "Immobile ranged attacker"},
+    {"key": "lancer",   "category": "Piece", "name": "Lancer",   "cost": 60,   "desc": "Damage scales with distance moved"},
+    {"key": "duelist",  "category": "Piece", "name": "Duelist",  "cost": 60,   "desc": "Both deal ATK simultaneously"},
     # --- Starter Modifiers (5) ---
-    {"key": "flaming",  "category": "Modifier", "name": "Flaming",  "cost": 80,  "desc": "Splash damage on attacks"},
-    {"key": "armored",  "category": "Modifier", "name": "Armored",  "cost": 80,  "desc": "-2 incoming damage"},
-    {"key": "swift",    "category": "Modifier", "name": "Swift",    "cost": 80,  "desc": "+1 move range"},
+    {"key": "flaming",  "category": "Modifier", "name": "Flaming",  "cost": 50,  "desc": "Splash damage on attacks"},
+    {"key": "armored",  "category": "Modifier", "name": "Armored",  "cost": 50,  "desc": "-2 incoming damage"},
+    {"key": "swift",    "category": "Modifier", "name": "Swift",    "cost": 50,  "desc": "+1 move range"},
     {"key": "piercing", "category": "Modifier", "name": "Piercing", "cost": 100, "desc": "Ignore armor on attacks"},
     {"key": "royal",    "category": "Modifier", "name": "Royal",    "cost": 120, "desc": "Earn 2x gold on captures"},
     # --- Convenience Items (3) ---
-    {"key": "loaded_dice",    "category": "Piece", "name": "Loaded Dice",    "cost": 150, "desc": "Reroll shop once per wave for free"},
-    {"key": "scouts_map",     "category": "Piece", "name": "Scout's Map",    "cost": 100, "desc": "See enemy composition during setup"},
-    {"key": "training_dummy", "category": "Piece", "name": "Training Dummy", "cost": 80,  "desc": "Surviving pieces gain +1 HP/wave"},
+    {"key": "loaded_dice",    "category": "Artifact", "name": "Loaded Dice",    "cost": 150, "desc": "Reroll shop once per wave for free"},
+    {"key": "scouts_map",     "category": "Artifact", "name": "Scout's Map",    "cost": 60,  "desc": "See enemy composition during setup"},
+    {"key": "training_dummy", "category": "Artifact", "name": "Training Dummy", "cost": 60,  "desc": "Surviving pieces gain +1 HP/wave"},
     # --- Premium Masters (dual-path: buyable OR achievement) ---
     {"key": "the_blacksmith",    "category": "Master", "name": "The Blacksmith",  "cost": 200,  "desc": "Modifier master: -2g mod costs"},
     {"key": "the_alchemist",     "category": "Master", "name": "The Alchemist",   "cost": 250,  "desc": "Cell mod master: doubled effects"},
@@ -43,6 +43,7 @@ SHOP_CATALOG = [
 CATEGORY_COLORS = {
     "Piece":    (80, 130, 255),
     "Modifier": (255, 180, 60),
+    "Artifact": (255, 215, 0),
     "Upgrade":  (100, 220, 100),
     "Master":   (200, 100, 255),
 }
@@ -71,6 +72,8 @@ class EloShop:
             return item["key"] in self.save_data.unlocked_pieces
         elif item["category"] == "Modifier":
             return item["key"] in self.save_data.unlocked_modifiers
+        elif item["category"] == "Artifact":
+            return item["key"] in self.save_data.unlocked_artifacts
         elif item["category"] == "Master":
             return item["key"] in self.save_data.unlocked_masters
         return False  # upgrades are always purchasable

@@ -136,7 +136,6 @@ body {
 
 /* === Color utility classes === */
 .gold { color: var(--accent-gold); text-shadow: 2px 2px 0 rgba(80, 60, 10, 0.5); }
-.purple { color: var(--accent-green); }
 .player-color { color: #5082ff; }
 .enemy-color { color: #ff4646; }
 .sep { color: var(--border-dim); margin: 0 0.5em; }
@@ -413,7 +412,6 @@ body {
   line-height: 1;
   z-index: 5;
   position: relative;
-  transition: transform 200ms ease;
   text-shadow: 2px 2px 0 rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
@@ -1508,20 +1506,56 @@ body {
 .stat-line .value { color: var(--text-main); }
 
 /* ================================================================
-   SCREEN SHAKE
+   SCREEN SHAKE (4 intensity tiers)
    ================================================================ */
 
-.shaking {
-  animation: shake 0.3s ease-in-out;
+.shake-1 { animation: shake-1 0.2s ease-in-out; }
+.shake-2 { animation: shake-2 0.3s ease-in-out; }
+.shake-3 { animation: shake-3 0.4s ease-in-out; }
+.shake-4 { animation: shake-4 0.5s ease-in-out; }
+
+/* Legacy class — maps to tier 2 */
+.shaking { animation: shake-2 0.3s ease-in-out; }
+
+@keyframes shake-1 {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, 2px); }
+  80% { transform: translate(1px, -1px); }
 }
 
-@keyframes shake {
+@keyframes shake-2 {
   0%, 100% { transform: translate(0, 0); }
-  15% { transform: translate(-3px, 2px); }
-  30% { transform: translate(3px, -2px); }
+  15% { transform: translate(-4px, 2px); }
+  30% { transform: translate(4px, -2px); }
   45% { transform: translate(-2px, 3px); }
   60% { transform: translate(2px, -1px); }
   75% { transform: translate(-1px, 2px); }
+}
+
+@keyframes shake-3 {
+  0%, 100% { transform: translate(0, 0); }
+  12% { transform: translate(-6px, 3px); }
+  25% { transform: translate(6px, -3px); }
+  37% { transform: translate(-4px, 5px); }
+  50% { transform: translate(4px, -2px); }
+  62% { transform: translate(-3px, 4px); }
+  75% { transform: translate(3px, -3px); }
+  87% { transform: translate(-1px, 1px); }
+}
+
+@keyframes shake-4 {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-10px, 5px); }
+  20% { transform: translate(10px, -5px); }
+  30% { transform: translate(-8px, 7px); }
+  40% { transform: translate(8px, -4px); }
+  50% { transform: translate(-6px, 5px); }
+  60% { transform: translate(6px, -3px); }
+  70% { transform: translate(-4px, 3px); }
+  80% { transform: translate(3px, -2px); }
+  90% { transform: translate(-1px, 1px); }
 }
 
 /* ================================================================
@@ -1554,9 +1588,6 @@ body {
   border: 1px solid rgba(232, 192, 96, 0.3);
   margin-bottom: 3px;
 }
-
-.synergy-badge .synergy-icon { font-size: 0.85rem; }
-.synergy-badge .synergy-name { color: var(--accent-gold); }
 
 /* ================================================================
    RESPONSIVE
@@ -2865,4 +2896,662 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-green);
+}
+
+/* ================================================================
+   CINEMATIC: SCALED DAMAGE NUMBER TIERS
+   ================================================================ */
+
+.damage-popup.dmg-medium {
+  font-size: 0.9rem;
+  color: #ff6622;
+}
+
+.damage-popup.dmg-heavy {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #ff8800;
+  animation: damageFloatHeavy 900ms ease forwards;
+}
+
+.damage-popup.dmg-massive {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #ffaa00;
+  animation: damageFloatMassive 1000ms ease forwards;
+}
+
+.damage-popup.dmg-cataclysmic {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6), 0 0 10px rgba(255, 215, 0, 0.5);
+  animation: damageFloatCataclysmic 1200ms ease forwards;
+}
+
+@keyframes damageFloatMedium {
+  0%   { opacity: 1; transform: translateY(0) scale(1.3); }
+  100% { opacity: 0; transform: translateY(-36px) scale(1); }
+}
+
+@keyframes damageFloatHeavy {
+  0%   { opacity: 1; transform: translateY(0) scale(1.4) rotate(-2deg); }
+  20%  { transform: translateY(-8px) scale(1.2) rotate(2deg); }
+  100% { opacity: 0; transform: translateY(-44px) scale(1) rotate(0deg); }
+}
+
+@keyframes damageFloatMassive {
+  0%   { opacity: 1; transform: translateY(0) scale(1.6); }
+  15%  { transform: translateY(-6px) scale(1.3); }
+  100% { opacity: 0; transform: translateY(-52px) scale(1); }
+}
+
+@keyframes damageFloatCataclysmic {
+  0%   { opacity: 1; transform: translateY(0) scale(2.0); }
+  10%  { transform: translateY(-4px) scale(1.6); }
+  30%  { opacity: 1; transform: translateY(-16px) scale(1.3); }
+  100% { opacity: 0; transform: translateY(-64px) scale(1); }
+}
+
+/* Medium uses default damageFloat but taller - override via class-specific animation */
+.damage-popup.dmg-medium {
+  animation: damageFloatMedium 850ms ease forwards;
+}
+
+/* ================================================================
+   CINEMATIC: COMBO COUNTER
+   ================================================================ */
+
+.combo-counter {
+  position: fixed;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Press Start 2P', monospace;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 60;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
+  animation: comboSlam 800ms ease-out forwards;
+}
+
+.combo-counter.combo-x2 {
+  font-size: 1.0rem;
+  color: #ffffff;
+}
+
+.combo-counter.combo-x3 {
+  font-size: 1.2rem;
+  color: #ffd700;
+}
+
+.combo-counter.combo-x4 {
+  font-size: 1.5rem;
+  color: #ffd700;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8), 0 0 12px rgba(255, 215, 0, 0.5);
+}
+
+@keyframes comboSlam {
+  0%   { opacity: 0; transform: translateX(-50%) scale(1.5) translateY(-10px); }
+  20%  { opacity: 1; transform: translateX(-50%) scale(1.0) translateY(0); }
+  70%  { opacity: 1; transform: translateX(-50%) scale(1.0) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) scale(0.9) translateY(-8px); }
+}
+
+/* ================================================================
+   CINEMATIC: SYNERGY POP-OFF
+   ================================================================ */
+
+.synergy-popoff {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.85rem;
+  pointer-events: none;
+  z-index: 55;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  animation: synergySlam 1200ms ease-out forwards;
+}
+
+@keyframes synergySlam {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.8); }
+  15%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+  25%  { transform: translateX(-50%) translateY(0) scale(1.0); }
+  75%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.95); }
+}
+
+/* ================================================================
+   CINEMATIC: PIECE-SPECIFIC DEATH EFFECTS
+   ================================================================ */
+
+/* Board-wide desaturation flash (Reaper death) */
+.board-desaturate {
+  animation: boardDesaturate 150ms ease-out;
+}
+
+@keyframes boardDesaturate {
+  0%   { filter: saturate(0) brightness(1.2); }
+  100% { filter: saturate(1) brightness(1); }
+}
+
+/* Board-wide inversion flash (Void death) */
+.board-invert {
+  animation: boardInvert 120ms ease-out;
+}
+
+@keyframes boardInvert {
+  0%   { filter: invert(1) brightness(1.3); }
+  100% { filter: invert(0) brightness(1); }
+}
+
+/* Time Mage scanline overlay */
+.scanline-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 55;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px, transparent 2px,
+    rgba(100, 200, 255, 0.08) 2px, rgba(100, 200, 255, 0.08) 3px
+  );
+  animation: scanlineFade 200ms ease-out forwards;
+}
+
+@keyframes scanlineFade {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ================================================================
+   CINEMATIC: BOSS NAME SLAM
+   ================================================================ */
+
+.boss-name-slam {
+  animation: bossSlam 600ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 50, 50, 0.4);
+}
+
+@keyframes bossSlam {
+  0%   { transform: scale(2.5); opacity: 0; }
+  50%  { transform: scale(0.95); opacity: 1; }
+  70%  { transform: scale(1.05); }
+  100% { transform: scale(1.0); opacity: 1; }
+}
+
+/* Boss mods fade-in after name slam */
+.boss-mods-fade {
+  opacity: 0;
+  animation: bossModsFadeIn 400ms ease-out 400ms forwards;
+}
+
+@keyframes bossModsFadeIn {
+  0%   { opacity: 0; transform: translateY(5px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Boss vignette during intro */
+.boss-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 49;
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.7);
+  animation: bossVignetteFade 1.5s ease-out forwards;
+}
+
+@keyframes bossVignetteFade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ================================================================
+   CINEMATIC: LEGENDARY DRAFT REVEAL
+   ================================================================ */
+
+/* Screen dim overlay for legendary entrance */
+.legendary-dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 10;
+  animation: legendaryDimFade 1200ms ease-out forwards;
+}
+
+@keyframes legendaryDimFade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Persistent golden pulse on legendary draft card */
+.legendary-pulse-glow {
+  animation: cardSway 3s ease-in-out infinite, legendaryPulse 2s infinite alternate !important;
+  animation-delay: calc(var(--i, 0) * 120ms), 0ms !important;
+}
+
+@keyframes legendaryPulse {
+  0%   { box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 8px rgba(255, 200, 50, 0.3); }
+  100% { box-shadow: 3px 3px 0 0 var(--shadow-color), 0 0 20px rgba(255, 200, 50, 0.6), 0 0 40px rgba(255, 200, 50, 0.2); }
+}
+
+/* ================================================================
+   ENCOUNTER MAP — Dark Medieval Tavern Theme
+   ================================================================ */
+
+#map-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 20px;
+  overflow-y: auto;
+  max-height: 100%;
+  background: none; /* inherit game's dark #bg-effects layer */
+}
+
+.map-header {
+  text-align: center;
+}
+
+.map-header h2 {
+  color: var(--accent-green);
+  font-size: 1.5rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin: 0 0 6px 0;
+  text-shadow: 0 0 8px rgba(106, 170, 48, 0.3);
+}
+
+#map-segment-info {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.map-layout {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 920px;
+}
+
+.map-column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 50px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+}
+
+/* SVG paths */
+.map-paths-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.map-paths-svg path {
+  fill: none;
+  stroke: #2a3a22;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 8 5;
+  transition: stroke 0.3s, stroke-width 0.3s, opacity 0.3s;
+}
+
+.map-paths-svg path.path-chosen {
+  stroke: var(--accent-gold);
+  stroke-width: 3;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 5px rgba(232, 192, 96, 0.4));
+}
+
+.map-paths-svg path.path-dimmed {
+  stroke: #1a2518;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.25;
+}
+
+.map-paths-svg path.path-future {
+  stroke: #3a4a32;
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+  opacity: 0.45;
+}
+
+/* Floor rows */
+.map-floor-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  z-index: 1;
+  position: relative;
+  width: 100%;
+}
+
+.map-floor-row.completed {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.map-floor-row.completed .map-node.chosen {
+  opacity: 1;
+}
+
+.map-floor-row.current {
+  opacity: 1;
+}
+
+.map-floor-row.future {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Floor label */
+.map-floor-label {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+/* "YOU ARE HERE" marker on current floor */
+.map-floor-row.current::before {
+  content: '\25B6';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent-gold);
+  font-size: 1rem;
+  filter: drop-shadow(0 0 4px rgba(232, 192, 96, 0.4));
+  animation: markerPulse 1.5s ease-in-out infinite;
+}
+
+/* ---- Card Nodes ---- */
+.map-node {
+  width: 210px;
+  background: var(--bg-card);
+  border-width: 3px;
+  border-style: solid;
+  border-color: var(--bevel-light) var(--bevel-dark) var(--bevel-dark) var(--bevel-light);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 3px 3px 0 0 var(--shadow-color);
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s, background 0.18s;
+  animation: nodeAppear 0.35s ease-out calc(var(--node-delay, 0) * 1ms) both;
+}
+
+.map-node:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent-green) var(--bevel-dark) var(--bevel-dark) #4a8828;
+  transform: translateY(-2px);
+  box-shadow: 4px 5px 0 0 var(--shadow-color), 0 0 10px rgba(106, 170, 48, 0.15);
+}
+
+.map-node.selected {
+  border-color: var(--accent-gold);
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 4px 6px 0 0 var(--shadow-color), 0 0 12px rgba(232, 192, 96, 0.3);
+  z-index: 2;
+}
+
+.map-node.chosen {
+  border-color: var(--accent-gold);
+}
+
+.map-node.chosen::after {
+  content: '\2713';
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  background: var(--accent-gold);
+  color: var(--bg-card);
+  width: 22px;
+  height: 22px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 2px 2px 0 0 var(--shadow-color);
+}
+
+/* Node header row */
+.map-node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px;
+}
+
+.map-node-icon {
+  font-size: 0.8rem;
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.map-node-label {
+  font-size: 0.55rem;
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex: 1;
+}
+
+.map-node-gold {
+  font-size: 0.55rem;
+  color: var(--accent-gold);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Divider */
+.map-node-divider {
+  height: 1px;
+  margin: 2px 8px;
+  background: var(--bevel-dark);
+}
+
+/* Modifier container */
+.map-node-mods {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+/* Individual modifier */
+.map-node-mod {
+  border-left: 3px solid var(--bevel-light);
+  padding: 3px 0 3px 7px;
+}
+
+.map-node-mod-name {
+  font-size: 0.5rem;
+  color: var(--accent-tan);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+}
+
+.map-node-mod-name .mod-icon {
+  margin-right: 3px;
+}
+
+.map-node-mod-desc {
+  font-size: 0.5rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+/* Drops section */
+.map-node-drops {
+  border-top: 1px dashed var(--bevel-dark);
+  padding: 6px 10px 7px;
+  font-size: 0.45rem;
+  color: var(--accent-gold);
+  letter-spacing: 0.5px;
+}
+
+/* ---- Boss Node — Dark Red Panel ---- */
+.map-boss-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+  position: relative;
+  width: 100%;
+}
+
+.map-boss-node {
+  width: 240px;
+  background: linear-gradient(160deg, #2a1210, #1e0c0a);
+  border-width: 3px;
+  border-style: solid;
+  border-color: var(--accent-red) #1a0a08 #1a0a08 #993333;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 12px;
+  position: relative;
+  box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 15px rgba(204, 68, 68, 0.2);
+  animation: bossNodePulse 3s ease-in-out infinite;
+}
+
+/* "BOSS" label above node */
+.map-boss-node::before {
+  content: 'BOSS';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-red);
+  color: #1a0a08;
+  font-size: 0.45rem;
+  font-weight: bold;
+  padding: 2px 8px;
+  letter-spacing: 2px;
+  box-shadow: 2px 2px 0 0 var(--shadow-color);
+}
+
+/* Remove old inner ring pseudo */
+.map-boss-node::after {
+  content: none;
+}
+
+.map-boss-node .boss-icon {
+  font-size: 2.4rem;
+  color: #ff4646;
+  text-shadow: 0 0 10px rgba(255, 70, 70, 0.4);
+}
+
+.map-boss-node .boss-name {
+  font-size: 0.5rem;
+  color: #cc6666;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.map-boss-label {
+  display: none; /* handled by .map-boss-node::before now */
+}
+
+.map-boss-node.future {
+  opacity: 0.45;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 950px) {
+  .map-node {
+    width: 195px;
+  }
+  .map-node-label,
+  .map-node-gold {
+    font-size: 0.5rem;
+  }
+  .map-node-mod-name {
+    font-size: 0.45rem;
+  }
+  .map-node-mod-desc {
+    font-size: 0.45rem;
+  }
+  .map-boss-node {
+    width: 210px;
+  }
+}
+
+/* ---- Animations ---- */
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.6) translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes bossNodePulse {
+  0%, 100% {
+    box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 15px rgba(204, 68, 68, 0.2);
+  }
+  50% {
+    box-shadow: 4px 4px 0 0 var(--shadow-color), 0 0 30px rgba(204, 68, 68, 0.45);
+  }
+}
+
+@keyframes markerPulse {
+  0%, 100% { opacity: 1; transform: translateY(-50%) translateX(0); }
+  50% { opacity: 0.5; transform: translateY(-50%) translateX(3px); }
+}
+
+/* ================================================================
+   COMBAT EFFECT: ASSASSIN VIGNETTE
+   ================================================================ */
+
+.assassin-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 140;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(26, 0, 51, 0.5) 100%);
+  animation: assassin-vig-pulse 0.4s ease-out forwards;
+}
+
+@keyframes assassin-vig-pulse {
+  0%   { opacity: 0; }
+  30%  { opacity: 1; }
+  100% { opacity: 0; }
 }

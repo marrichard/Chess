@@ -551,7 +551,7 @@ function updateCompletionCounter() {
 
 // ── Main render entry point ──────────────────────────────────────────
 
-function renderChesticonTab(containerId, tab) {
+function renderChesticonTab(tab) {
   _currentTab = tab;
   _selectedEntry = null;
 

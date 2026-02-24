@@ -24,6 +24,7 @@ from rarity import (
 )
 from achievements import AchievementChecker, ACHIEVEMENT_MAP, process_unlocks
 from synergies import check_synergies, get_synergy_display_data
+from encounter_modifiers import BOARD_MODIFIERS, MODIFIER_POOLS
 import renderer
 import save_data as sd
 from particles import ParticleSystem
@@ -153,8 +154,12 @@ def evaluate_board(board: Board, team: Team) -> float:
         # Bonus for can-kill-this-turn threats
         for mx, my in p.get_capture_moves(board):
             target = board.get_piece_at(mx, my)
-            if target and target.hp <= p.attack:
-                score += target.value * 5  # bonus for killable targets
+            if target:
+                if target.hp <= p.attack:
+                    score += target.value * 5  # bonus for killable targets
+                # Decoy taunt: enemies prioritize attacking Decoys
+                if target.piece_type == PieceType.DECOY:
+                    score += 50
         # New piece bonuses
         if p.piece_type == PieceType.SUMMONER:
             adj_empty = sum(1 for dx in [-1,0,1] for dy in [-1,0,1]
@@ -300,6 +305,7 @@ def minimax_choose_move(
             moves = moves[:MAX_OUR_MOVES]
 
     scores: list[float] = []
+    alpha = -float('inf')  # best score we've found so far (for alpha-beta pruning)
 
     for piece, mx, my in moves:
         # Clone board, apply our move
@@ -320,7 +326,10 @@ def minimax_choose_move(
         enemy_moves = clone.get_all_valid_moves(enemy_team)
         if not enemy_moves:
             # Opponent has no moves — evaluate position as-is
-            scores.append(evaluate_board(clone, team))
+            val = evaluate_board(clone, team)
+            scores.append(val)
+            if val > alpha:
+                alpha = val
             continue
 
         # Prune enemy moves to limit search breadth
@@ -344,10 +353,19 @@ def minimax_choose_move(
         for idx2, bp2 in enumerate(clone.pieces):
             e_piece_indices[id(bp2)] = idx2
 
-        # Find the opponent's move that minimizes our score
+        # Find the opponent's move that minimizes our score (with alpha-beta cutoff)
         worst_for_us = float('inf')
+        pruned = False
         for ep, emx, emy in enemy_moves:
-            clone2 = clone.copy()
+            # Lightweight clone: share border_modifiers/dead_zone (immutable during minimax)
+            clone2 = Board(width=clone.width, height=clone.height)
+            clone2.pieces = [p.copy() for p in clone.pieces]
+            clone2.blocked_tiles = set(clone.blocked_tiles)
+            clone2.cell_modifiers = {k: v.copy() for k, v in clone.cell_modifiers.items()}
+            clone2.border_modifiers = clone.border_modifiers  # shared, not mutated
+            clone2.dead_zone = clone.dead_zone  # shared, not mutated
+            clone2._grid_dirty = True
+
             e_idx = e_piece_indices.get(id(ep))
             if e_idx is None:
                 continue
@@ -358,11 +376,19 @@ def minimax_choose_move(
             if val < worst_for_us:
                 worst_for_us = val
 
+            # Alpha-beta cutoff: if enemy already found a reply that makes this
+            # move worse than our current best, skip remaining enemy moves
+            if worst_for_us <= alpha:
+                pruned = True
+                break
+
         if worst_for_us == float('inf'):
             # No enemy moves evaluated — fallback
             worst_for_us = evaluate_board(clone, team)
 
         scores.append(worst_for_us)
+        if worst_for_us > alpha:
+            alpha = worst_for_us
 
     # Aggression bonus: prefer capture moves over passive positioning
     for i, (piece, mx, my) in enumerate(moves):
@@ -395,6 +421,7 @@ class AutoBattler:
         master_key: str = "the_strategist",
     ) -> None:
         self.board = Board(BOARD_W, BOARD_H)
+        # master_effects will be set after master initialization
         self.wave = 0
         self.wins = 0
         self.losses = 0
@@ -499,6 +526,13 @@ class AutoBattler:
 
         # --- Synergy system ---
         self.active_synergies: list[str] = []
+        # Master effects list (passive + drawback keys) for board methods
+        self.master_effects: list[str] = []
+        if self.master.passive:
+            self.master_effects.append(self.master.passive)
+        if self.master.drawback:
+            self.master_effects.append(self.master.drawback)
+        self.board.master_effects = self.master_effects
 
         # --- Achievement system ---
         self._achievement_checker = AchievementChecker()
@@ -535,6 +569,18 @@ class AutoBattler:
         self.anchor_chain_used: bool = False
         self.first_capture_this_turn: bool = True
 
+        # Win streak tracking for bonus gold
+        self.win_streak: int = 0
+
+        # --- Encounter map ---
+        self.encounter_map: list[list[dict]] = []   # floors of encounter nodes
+        self.current_floor: int = 0                  # index into encounter_map
+        self.current_encounter: dict | None = None   # selected node for current wave
+        self.map_selection: int = 0                  # UI cursor
+        self.segment_choices: list[int] = []         # chosen node index per completed floor
+        self.active_encounter_mods: list[dict] = []  # mods applied to current battle
+        self.pending_cell_spawns: list[dict] = []    # biome cells to place at wave start
+
     def on_enter(self) -> None:
         self.wave = 0
         self.wins = 0
@@ -550,6 +596,7 @@ class AutoBattler:
         self.wave_in_round = 0
         self.tournament_stats = {"pieces_survived": 0, "gold_earned": 0, "bosses_beaten": 0}
         self.elo_earned = 0
+        self.win_streak = 0
 
         # Reset tarot/artifact state
         self.tarot_cards = []
@@ -589,14 +636,16 @@ class AutoBattler:
             self.tarot_slots = 1 + self.save_data.upgrades.get("tarot_slot", 0)
             self.artifact_slots = 2 + self.save_data.upgrades.get("artifact_slot", 0)
 
-            # Build roster from unlocked pieces
-            base_pieces = list(self.save_data.unlocked_pieces)
-            self.roster = []
-            for pname in base_pieces:
-                pt = PieceType(pname)
-                self.roster.append(Piece(pt, Team.PLAYER))
+            # Fixed starting roster — unlocked pieces expand the draft pool, not the start
+            self.roster = [
+                Piece(PieceType.PAWN, Team.PLAYER),
+                Piece(PieceType.PAWN, Team.PLAYER),
+                Piece(PieceType.PAWN, Team.PLAYER),
+                Piece(PieceType.KNIGHT, Team.PLAYER),
+                Piece(PieceType.BISHOP, Team.PLAYER),
+            ]
 
-            # Extra piece slots
+            # Extra piece slots from upgrades
             extra = self.save_data.upgrades.get("extra_piece", 0)
             for _ in range(extra):
                 self.roster.append(Piece(PieceType.PAWN, Team.PLAYER))
@@ -617,7 +666,12 @@ class AutoBattler:
         for p in self.roster:
             self.run_stats["unique_piece_types_used"].add(p.piece_type.value)
 
-        self._start_wave()
+        # Generate encounter map and show it instead of going straight to wave
+        self.encounter_map = self._generate_encounter_map()
+        self.current_floor = 0
+        self.segment_choices = []
+        self.phase = "map"
+        self.map_selection = 0
 
     def _apply_master_start(self) -> None:
         """Apply the selected master's starting bonus."""
@@ -793,6 +847,46 @@ class AutoBattler:
             "x": bm.x, "y": bm.y,
         }
 
+    def _deserialize_encounter_map(self, data: list) -> list[list[dict]]:
+        """Restore encounter map from JSON (lists → tuples where needed)."""
+        result: list[list[dict]] = []
+        for floor in data:
+            floor_nodes = []
+            for node in floor:
+                n = dict(node)
+                mods = []
+                for m in n.get("modifiers", []):
+                    mj = dict(m)
+                    if isinstance(mj.get("color"), list):
+                        mj["color"] = tuple(mj["color"])
+                    if isinstance(mj.get("enemy_random_mods"), list):
+                        mj["enemy_random_mods"] = tuple(mj["enemy_random_mods"])
+                    mods.append(mj)
+                n["modifiers"] = mods
+                floor_nodes.append(n)
+            result.append(floor_nodes)
+        return result
+
+    def _serialize_encounter_map(self) -> list:
+        """Convert encounter map to JSON-safe format (tuples → lists)."""
+        result = []
+        for floor in self.encounter_map:
+            floor_data = []
+            for node in floor:
+                n = dict(node)
+                mods = []
+                for m in n.get("modifiers", []):
+                    mj = dict(m)
+                    if isinstance(mj.get("color"), tuple):
+                        mj["color"] = list(mj["color"])
+                    if isinstance(mj.get("enemy_random_mods"), tuple):
+                        mj["enemy_random_mods"] = list(mj["enemy_random_mods"])
+                    mods.append(mj)
+                n["modifiers"] = mods
+                floor_data.append(n)
+            result.append(floor_data)
+        return result
+
     def to_run_state(self) -> dict:
         """Serialize all run-critical state into a plain dict."""
         roster = [self._serialize_piece(p) for p in self.roster]
@@ -840,6 +934,11 @@ class AutoBattler:
             "master_key": self.master_key,
             "run_stats": serializable_run_stats,
             "run_start_time": self.run_start_time,
+            "win_streak": self.win_streak,
+            "encounter_map": self._serialize_encounter_map(),
+            "current_floor": self.current_floor,
+            "map_selection": self.map_selection,
+            "segment_choices": list(self.segment_choices),
         }
 
     def restore_from_run_state(self, state: dict, save_data) -> None:
@@ -864,6 +963,13 @@ class AutoBattler:
         })
         self.max_lives = state.get("max_lives", 3)
         self.elo_earned = 0
+        self.win_streak = state.get("win_streak", 0)
+
+        # Restore encounter map state
+        self.encounter_map = self._deserialize_encounter_map(state.get("encounter_map", []))
+        self.current_floor = state.get("current_floor", 0)
+        self.map_selection = state.get("map_selection", 0)
+        self.segment_choices = state.get("segment_choices", [])
 
         # Rebuild roster
         self.roster = [self._deserialize_piece(d) for d in state.get("roster", [])]
@@ -927,16 +1033,27 @@ class AutoBattler:
         from masters import MASTERS, DEFAULT_MASTER
         self.master_key = saved_master if saved_master in MASTERS else DEFAULT_MASTER
         self.master = MASTERS[self.master_key]
+        # Rebuild master effects list
+        self.master_effects = []
+        if self.master.passive:
+            self.master_effects.append(self.master.passive)
+        if self.master.drawback:
+            self.master_effects.append(self.master.drawback)
+        self.board.master_effects = self.master_effects
 
         # _start_wave increments wave, so offset by -1 to land on saved wave
         saved_phase = state.get("phase", "setup")
-        self.wave -= 1
-        self._start_wave()
-        # Restore the exact phase from the save (start_wave may set a different one)
-        self.phase = saved_phase
-        # If restored into shop phase, regenerate shop items (not serialized)
-        if saved_phase == "shop":
-            self._generate_shop()
+        if saved_phase == "map":
+            # Map phase: don't call _start_wave, just restore the phase
+            self.phase = "map"
+        else:
+            self.wave -= 1
+            self._start_wave()
+            # Restore the exact phase from the save (start_wave may set a different one)
+            self.phase = saved_phase
+            # If restored into shop phase, regenerate shop items (not serialized)
+            if saved_phase == "shop":
+                self._generate_shop()
 
     def _auto_save(self) -> None:
         """Save current run state to disk at checkpoint phases."""
@@ -1112,6 +1229,52 @@ class AutoBattler:
         self.new_achievements = []
 
         # Phase-specific data
+        if self.phase == "map":
+            # Convert ALL floors in segment for the vertical map
+            all_floors_json = []
+            for floor in self.encounter_map:
+                floor_json = []
+                for node in floor:
+                    mods_json = []
+                    for m in node.get("modifiers", []):
+                        mj = dict(m)
+                        if isinstance(mj.get("color"), tuple):
+                            mj["color"] = list(mj["color"])
+                        if isinstance(mj.get("enemy_random_mods"), tuple):
+                            mj["enemy_random_mods"] = list(mj["enemy_random_mods"])
+                        if isinstance(mj.get("spawn_cells"), dict):
+                            mj["spawn_cells"] = dict(mj["spawn_cells"])
+                        mods_json.append(mj)
+                    floor_json.append({
+                        "type": node["type"],
+                        "modifiers": mods_json,
+                        "enemy_count_base": node["enemy_count_base"],
+                        "reward_gold_min": node["reward_gold_min"],
+                        "reward_gold_max": node["reward_gold_max"],
+                        "guaranteed_drops": node.get("guaranteed_drops", []),
+                    })
+                all_floors_json.append(floor_json)
+
+            # Boss info for boss node
+            boss_node = None
+            if self.tournament and self.boss_index < len(self.boss_sequence):
+                bt = self.boss_sequence[self.boss_index]
+                boss_node = {
+                    "type": bt.value,
+                    "name": bt.value.replace("_", " ").title() + " Boss",
+                }
+
+            state["mapData"] = {
+                "currentFloor": self.current_floor,
+                "floors": all_floors_json,
+                "selection": self.map_selection,
+                "choices": list(self.segment_choices),
+                "hasBoss": self.tournament,
+                "bossNode": boss_node,
+                "bossIndex": self.boss_index,
+                "totalBosses": len(self.boss_sequence),
+            }
+
         if self.phase == "shop":
             shop_rows = self._get_shop_rows()
             rows_data = []
@@ -1193,6 +1356,96 @@ class AutoBattler:
 
         return state
 
+    # ----------------------------------------------------------------
+    # Encounter map generation
+    # ----------------------------------------------------------------
+
+    def _generate_encounter_map(self) -> list[list[dict]]:
+        """Build a segment encounter map (current boss-round only)."""
+        if self.tournament:
+            total_floors = self.waves_per_round  # 2 floors per boss round
+        else:
+            total_floors = 3  # 3 floors for free play segments
+
+        # Difficulty based on boss progression, not absolute floor index
+        base_difficulty = self.boss_index / max(len(self.boss_sequence) - 1, 1) if self.tournament else 0.3
+
+        floors: list[list[dict]] = []
+        for fi in range(total_floors):
+            # Scale difficulty within segment: first floor easier, last harder
+            seg_progress = fi / max(total_floors - 1, 1)
+            difficulty = base_difficulty * 0.7 + seg_progress * 0.3
+            num_nodes = self.rng.randint(2, 4)
+            floor_nodes = [self._generate_encounter_node_seg(fi, total_floors, difficulty) for _ in range(num_nodes)]
+            floors.append(floor_nodes)
+        return floors
+
+    def _generate_encounter_node_seg(self, floor_idx: int, total_floors: int, difficulty: float) -> dict:
+        """Create a single encounter node with difficulty driven by segment context."""
+        num_mods = self.rng.choices([1, 2, 3], weights=[5, 3, 1], k=1)[0]
+        modifiers = self._select_encounter_modifiers(difficulty, num_mods)
+
+        # Enemy count scales with boss_index
+        enemy_count_base = min(3 + self.boss_index + floor_idx, 8)
+        # Compute preview gold range
+        base_gold_min = 3 + (self.boss_index * self.waves_per_round + floor_idx) * 2
+        base_gold_max = base_gold_min + 3
+        gold_mult = 1.0
+        gold_flat = 0
+        for mod in modifiers:
+            gold_mult *= mod.get("gold_multiplier", 1.0)
+            gold_flat += mod.get("gold_flat_bonus", 0)
+        reward_gold_min = int(base_gold_min * gold_mult) + gold_flat
+        reward_gold_max = int(base_gold_max * gold_mult) + gold_flat
+
+        guaranteed_drops = []
+        for mod in modifiers:
+            if mod.get("guaranteed_artifact"):
+                guaranteed_drops.append("artifact")
+            if mod.get("legendary_shop_chance"):
+                guaranteed_drops.append("legendary_chance")
+
+        return {
+            "type": "battle",
+            "modifiers": modifiers,
+            "enemy_count_base": enemy_count_base,
+            "reward_gold_min": reward_gold_min,
+            "reward_gold_max": reward_gold_max,
+            "guaranteed_drops": guaranteed_drops,
+        }
+
+    def _select_encounter_modifiers(self, difficulty: float, count: int) -> list[dict]:
+        """Pick *count* unique modifiers, biased by difficulty (0.0=easy, 1.0=hard)."""
+        # Build weighted pool — early floors bias easy, late floors bias hard/extreme
+        pool_weights = {
+            "easy":    max(0.0, 1.0 - difficulty * 1.5),
+            "normal":  0.5,
+            "hard":    difficulty * 1.2,
+            "extreme": max(0.0, difficulty - 0.5) * 1.5,
+        }
+        weighted_keys: list[tuple[str, float]] = []
+        for tier, tier_keys in MODIFIER_POOLS.items():
+            w = pool_weights.get(tier, 0.0)
+            if w <= 0:
+                continue
+            for key in tier_keys:
+                weighted_keys.append((key, w))
+
+        if not weighted_keys:
+            return []
+
+        chosen: list[dict] = []
+        used_keys: set[str] = set()
+        for _ in range(count):
+            available = [(k, w) for k, w in weighted_keys if k not in used_keys]
+            if not available:
+                break
+            keys, weights = zip(*available)
+            picked = self.rng.choices(keys, weights=weights, k=1)[0]
+            used_keys.add(picked)
+            chosen.append(dict(BOARD_MODIFIERS[picked], key=picked))
+        return chosen
+
     def _start_wave(self) -> None:
         self.wave += 1
         self.board.clear()
@@ -1214,8 +1467,8 @@ class AutoBattler:
             p.hp = p.max_hp  # reset HP to full each wave
 
         # Check synergies at wave start
-        board_cell_mods = list(self.board.cell_modifiers.values())
-        board_border_mods = list(self.board.border_modifiers.values())
+        board_cell_mods = [cm.effect for cm in self.board.cell_modifiers.values()]
+        board_border_mods = [bm.effect for bm in self.board.border_modifiers.values()]
         self.active_synergies = check_synergies(
             self.roster, Team.PLAYER,
             master_key=self.master_key,
@@ -1225,6 +1478,40 @@ class AutoBattler:
             board_border_mods=board_border_mods,
             has_infinity_loop=self._has_artifact("infinity_loop"),
         )
+
+        # Build master effects list for board methods
+        self.master_effects = []
+        if self.master.passive:
+            self.master_effects.append(self.master.passive)
+        if self.master.drawback:
+            self.master_effects.append(self.master.drawback)
+        # Store on board for pieces.py get_valid_moves access
+        self.board.master_effects = self.master_effects
+
+        # Phantom Army synergy: all pieces gain Ethereal
+        if "phantom_army" in self.active_synergies:
+            from pieces import MODIFIERS as PIECE_MODIFIERS
+            ethereal_mod = PIECE_MODIFIERS.get("ethereal")
+            if ethereal_mod:
+                for p in self.roster:
+                    if p.alive and not any(m.effect == "ethereal" for m in p.modifiers):
+                        p.modifiers.append(ethereal_mod)
+
+        # Rat King synergy: merge 3+ King Rats into a mega rat
+        if "rat_king" in self.active_synergies:
+            king_rats = [p for p in self.roster if p.piece_type == PieceType.KING_RAT and p.alive]
+            if len(king_rats) >= 3:
+                total_hp = sum(kr.hp for kr in king_rats)
+                total_atk = sum(kr.attack for kr in king_rats)
+                # Keep the first, remove the rest
+                mega = king_rats[0]
+                mega.hp = total_hp
+                mega.max_hp = total_hp
+                mega.attack = total_atk
+                for kr in king_rats[1:]:
+                    kr.alive = False
+                    if kr in self.roster:
+                        self.roster.remove(kr)
 
         # Restore owned cell modifiers to their origin positions on board
         for cm in self.cell_modifiers:
@@ -1248,13 +1535,41 @@ class AutoBattler:
             self._generate_enemies()
             self.phase = "setup"
 
+        # --- Spawn biome cells from encounter modifiers ---
+        if self.pending_cell_spawns:
+            occupied = set(self.board.cell_modifiers.keys())
+            for spawn in self.pending_cell_spawns:
+                effect = spawn["effect"]
+                count = spawn["count"]
+                for _ in range(count):
+                    for _att in range(30):
+                        rx, ry = self.rng.randint(0, 7), self.rng.randint(0, 7)
+                        if (rx, ry) not in occupied:
+                            cm = make_cell_modifier(effect, rx, ry)
+                            self.board.cell_modifiers[(rx, ry)] = cm
+                            occupied.add((rx, ry))
+                            break
+            self.pending_cell_spawns = []
+
+        # --- Apply blessed encounter modifier to player pieces ---
+        for mod in self.active_encounter_mods:
+            hp_bonus = mod.get("player_hp_bonus", 0)
+            if hp_bonus:
+                for p in self.roster:
+                    p.max_hp += hp_bonus
+                    p.hp += hp_bonus
+
         # --- Apply tarot & artifact wave-start effects ---
         self._apply_wave_start_effects()
 
         self._auto_save()
 
     def _generate_enemies(self) -> None:
-        num_enemies = min(3 + self.wave, 8)
+        # Base enemy count — use encounter node if available
+        if self.current_encounter:
+            num_enemies = self.current_encounter.get("enemy_count_base", min(3 + self.wave, 8))
+        else:
+            num_enemies = min(3 + self.wave, 8)
 
         # Difficulty scaling for tournament
         if self.tournament:
@@ -1262,7 +1577,24 @@ class AutoBattler:
                 num_enemies += 2
             elif self.difficulty == "grandmaster":
                 num_enemies += 3
-            num_enemies = min(num_enemies, 12)
+
+        # Apply encounter modifier adjustments to enemy count
+        enc_hp_mult = 1.0
+        enc_atk_bonus = 0
+        enc_piece_mod = None
+        enc_random_mods = None
+        for mod in self.active_encounter_mods:
+            num_enemies += mod.get("enemy_count_bonus", 0)
+            if "enemy_count_override" in mod:
+                num_enemies = mod["enemy_count_override"]
+            enc_hp_mult *= mod.get("enemy_hp_mult", 1.0)
+            enc_atk_bonus += mod.get("enemy_atk_bonus", 0)
+            if mod.get("starting_piece_mod"):
+                enc_piece_mod = mod["starting_piece_mod"]
+            if mod.get("enemy_random_mods"):
+                enc_random_mods = mod["enemy_random_mods"]
+
+        num_enemies = max(1, min(num_enemies, 12))
 
         pool = [PieceType.PAWN, PieceType.PAWN, PieceType.PAWN, PieceType.KNIGHT]
         if self.wave >= 2:
@@ -1290,10 +1622,39 @@ class AutoBattler:
             r = PIECE_RARITY.get(pt.value, Rarity.COMMON)
             weights.append(RARITY_PROPS[r]["weight"])
 
+        # Enemy HP scaling after wave 2
+        bonus_hp = min(self.wave - 2, 8) if self.wave > 2 else 0
+
         used = set()
         for _ in range(num_enemies):
             pt = self.rng.choices(unique_pool, weights=weights, k=1)[0]
             piece = Piece(pt, Team.ENEMY)
+
+            # Apply wave-based HP scaling
+            if bonus_hp > 0:
+                piece.max_hp += bonus_hp
+                piece.hp += bonus_hp
+
+            # Apply encounter stat modifiers
+            if enc_hp_mult != 1.0:
+                piece.max_hp = max(1, int(piece.max_hp * enc_hp_mult))
+                piece.hp = piece.max_hp
+            if enc_atk_bonus != 0:
+                piece.attack = max(0, piece.attack + enc_atk_bonus)
+
+            # Apply encounter starting piece modifier (e.g. armored_foes)
+            if enc_piece_mod and enc_piece_mod in MODIFIERS:
+                if not any(m.effect == enc_piece_mod for m in piece.modifiers):
+                    piece.modifiers.append(MODIFIERS[enc_piece_mod])
+
+            # Apply encounter random mods (chaotic)
+            if enc_random_mods:
+                num_rand = self.rng.randint(enc_random_mods[0], enc_random_mods[1])
+                mod_keys = list(PIECE_MODIFIER_VISUALS.keys())
+                for _ in range(num_rand):
+                    rk = self.rng.choice(mod_keys)
+                    if not any(m.effect == rk for m in piece.modifiers):
+                        piece.modifiers.append(MODIFIERS[rk])
 
             # Difficulty: random mods on regular enemies
             if self.tournament and self.difficulty in ("extreme", "grandmaster"):
@@ -1326,6 +1687,11 @@ class AutoBattler:
             extra_mod_key = self.rng.choice(list(PIECE_MODIFIER_VISUALS.keys()))
             if not any(m.effect == extra_mod_key for m in boss.modifiers):
                 boss.modifiers.append(MODIFIERS[extra_mod_key])
+
+        # Boss HP scaling: later bosses get more HP
+        if self.boss_index > 0:
+            boss.hp = int(boss.hp * (1 + 0.15 * self.boss_index))
+            boss.max_hp = boss.hp
 
         # Place boss in center top
         boss_x = self.rng.randint(2, 5)
@@ -1377,11 +1743,11 @@ class AutoBattler:
         # Penalty for not clearing
         if bosses < len(self.boss_sequence):
             if cash_out:
-                total *= 0.333  # Cash out: 1/3 earnings
+                total *= 0.60   # Cash out: 60% earnings
             else:
-                total *= 0.25   # Loss penalty: 1/4 earnings
+                total *= 0.40   # Loss penalty: 40% earnings
 
-        return int(total)
+        return max(25, int(total))  # Minimum 25 ELO per completed run
 
     # --- Input handling ---
 
@@ -1404,6 +1770,8 @@ class AutoBattler:
             return self._handle_swap_tarot(action)
         elif self.phase == "draft":
             return self._handle_draft(action)
+        elif self.phase == "map":
+            return self._handle_map(action)
         elif self.phase == "boss_intro":
             return self._handle_boss_intro(action)
         elif self.phase == "tournament_end":
@@ -1536,6 +1904,7 @@ class AutoBattler:
             if existing and existing.team == Team.PLAYER and existing in self.placed:
                 # Pick up a placed piece (start drag)
                 existing.alive = False
+                self.board._grid_dirty = True  # invalidate so stale entry is cleared
                 self.held_piece = existing
                 self.dragging = True
                 self.drag_origin = (existing.x, existing.y)
@@ -1573,7 +1942,12 @@ class AutoBattler:
                     # Return to origin
                     if self.drag_origin:
                         ox, oy = self.drag_origin
-                        self.board.place_piece(self.held_piece, ox, oy)
+                        if not self.board.place_piece(self.held_piece, ox, oy):
+                            # Fallback: force the piece back alive at origin
+                            self.held_piece.x = ox
+                            self.held_piece.y = oy
+                            self.held_piece.alive = True
+                            self.board._grid_dirty = True
                     self.message = "Returned piece to original position."
                     self.held_piece = None
                 self.dragging = False
@@ -1584,7 +1958,8 @@ class AutoBattler:
             if self.held_piece:
                 # Return held piece to roster
                 self.placed.remove(self.held_piece)
-                self.held_piece.alive = False
+                self.held_piece.alive = True  # keep alive — it's back in the hand
+                self.board._grid_dirty = True
                 self.held_piece = None
                 self.message = "Piece returned to roster."
             else:
@@ -1632,6 +2007,7 @@ class AutoBattler:
                 existing = self.board.get_piece_at(cx, cy)
                 if existing and existing.team == Team.PLAYER and existing in self.placed:
                     existing.alive = False
+                    self.board._grid_dirty = True  # invalidate so stale entry is cleared
                     self.held_piece = existing
                     self.message = f"Picked up {existing.piece_type.value}. ENTER to place, ESC to return."
                 else:
@@ -1778,7 +2154,8 @@ class AutoBattler:
             target_type = target.piece_type
             target_hp_before = target.hp
             captured = self.board.move_piece(piece, mx, my, rng=self.rng,
-                                             active_synergies=self.active_synergies)
+                                             active_synergies=self.active_synergies,
+                                             master_effects=self.master_effects)
             self._check_anchor_chain()
 
             if captured:
@@ -1794,7 +2171,8 @@ class AutoBattler:
                 self.particles.spawn("capture_burst", sx, sy, color=renderer.FG_PLAYER)
                 # Process on-death abilities
                 death_msgs = self.board.process_on_death(target, piece, self.rng,
-                                                          self.active_synergies)
+                                                          self.active_synergies,
+                                                          master_effects=self.master_effects)
                 self.battle_log.extend(death_msgs)
             else:
                 # Bounce-back: target survived
@@ -1853,7 +2231,8 @@ class AutoBattler:
         """Execute one AI enemy turn, then switch back to player."""
         # Process turn-start abilities for enemy
         ability_msgs = self.board.process_turn_start_abilities(Team.ENEMY, self.rng,
-                                                                self.active_synergies)
+                                                                self.active_synergies,
+                                                                master_effects=self.master_effects)
         self.battle_log.extend(ability_msgs)
 
         pieces = self.board.get_team_pieces(Team.ENEMY)
@@ -1878,16 +2257,28 @@ class AutoBattler:
                 target_type = target.piece_type
                 target_hp_before = target.hp
                 captured = self.board.move_piece(best_piece, mx, my, rng=self.rng,
-                                                  active_synergies=self.active_synergies)
+                                                  active_synergies=self.active_synergies,
+                                                  master_effects=self.master_effects)
                 self._check_anchor_chain()
                 if captured:
                     log = f"Enemy {best_piece.piece_type.value} kills {target_type.value}!"
                     self._trigger_shake(0.3)
                     sx, sy = self._board_to_screen(mx, my)
                     self.particles.spawn("capture_burst", sx, sy, color=renderer.FG_ENEMY)
+                    # Track alive pieces before on-death (for phoenix revive detection)
+                    alive_before_enemy = set(id(p) for p in self.board.pieces if p.alive and p.team == Team.PLAYER)
                     death_msgs = self.board.process_on_death(target, best_piece, self.rng,
-                                                              self.active_synergies)
+                                                              self.active_synergies,
+                                                              master_effects=self.master_effects)
                     self.battle_log.extend(death_msgs)
+                    # Phoenix revive detection
+                    alive_after_enemy = set(id(p) for p in self.board.pieces if p.alive and p.team == Team.PLAYER)
+                    revived = alive_after_enemy - alive_before_enemy
+                    if revived:
+                        self.run_stats["phoenix_revives_this_battle"] += len(revived)
+                        if self.save_data:
+                            self.save_data.stats["total_revives"] = \
+                                self.save_data.stats.get("total_revives", 0) + len(revived)
                 else:
                     dmg = target_hp_before - target.hp
                     log = f"Enemy {best_piece.piece_type.value} hits {target_type.value} for {dmg} (HP:{target.hp}) — bounced"
@@ -1896,6 +2287,10 @@ class AutoBattler:
                 best_piece.x, best_piece.y = mx, my
                 best_piece.has_moved = True
                 self.board._grid_dirty = True
+                # Process non-capture side effects
+                nc_msgs = self.board.process_non_capture_move(
+                    best_piece, old_x, old_y, self.rng, self.active_synergies)
+                self.battle_log.extend(nc_msgs)
                 if self.board.check_promotion(best_piece, self.rng):
                     log = f"Enemy {old_type.value} promotes to {best_piece.piece_type.value}!"
                     sx, sy = self._board_to_screen(mx, my)
@@ -1926,9 +2321,16 @@ class AutoBattler:
             self.battle_log = self.battle_log[-14:]
         self.message = log
 
+        # Tactician drawback: enemy gets a second move
+        if (self.master_key == "the_tactician"
+                and self.board.count_alive(Team.PLAYER) > 0
+                and self.board.count_alive(Team.ENEMY) > 0):
+            self._do_extra_move(Team.ENEMY)
+
         # Process turn-start abilities for player (start of player's next turn)
         player_ability_msgs = self.board.process_turn_start_abilities(Team.PLAYER, self.rng,
-                                                                       self.active_synergies)
+                                                                       self.active_synergies,
+                                                                       master_effects=self.master_effects)
         self.battle_log.extend(player_ability_msgs)
 
         self.battle_player_turn = True
@@ -1983,7 +2385,8 @@ class AutoBattler:
             for p in killed:
                 team_name = "Player" if p.team == Team.PLAYER else "Enemy"
                 self.battle_log.append(f"  {team_name} {p.piece_type.value} crushed in the squeeze!")
-                death_msgs = self.board.process_on_death(p, None, self.rng, self.active_synergies)
+                death_msgs = self.board.process_on_death(p, None, self.rng, self.active_synergies,
+                                                          master_effects=self.master_effects)
                 self.battle_log.extend(death_msgs)
 
             # Clean up dead pieces
@@ -2013,6 +2416,44 @@ class AutoBattler:
             self.battle_log.append("The arena collapses completely!")
             self._end_battle()
 
+    def _do_extra_move(self, team: Team) -> None:
+        """Execute a second move for the given team (Tactician master)."""
+        pieces = self.board.get_team_pieces(team)
+        if not pieces:
+            return
+        # Reset has_moved on one unmoved piece so it can act
+        for p in pieces:
+            p.has_moved = False
+        result = minimax_choose_move(
+            team, self.board, rng=self.rng,
+            excluded=self._prev_positions,
+            piece_streaks=self._piece_noncapture_streak,
+            active_synergies=self.active_synergies,
+        )
+        if result:
+            bp, mx, my = result
+            old_x, old_y = bp.x, bp.y
+            target = self.board.get_piece_at(mx, my)
+            is_cap = target and target.team != bp.team
+            self._record_move(bp, bp.x, bp.y, captured=bool(is_cap))
+            if is_cap:
+                captured = self.board.move_piece(bp, mx, my, rng=self.rng,
+                                                  active_synergies=self.active_synergies,
+                                                  master_effects=self.master_effects)
+                if captured:
+                    death_msgs = self.board.process_on_death(target, bp, self.rng,
+                                                              self.active_synergies,
+                                                              master_effects=self.master_effects)
+                    self.battle_log.extend(death_msgs)
+            else:
+                bp.x, bp.y = mx, my
+                bp.has_moved = True
+                self.board._grid_dirty = True
+                nc_msgs = self.board.process_non_capture_move(
+                    bp, old_x, old_y, self.rng, self.active_synergies)
+                self.battle_log.extend(nc_msgs)
+                self.board.check_promotion(bp, self.rng)
+
     def _battle_step(self) -> None:
         team = Team.PLAYER if self.battle_player_turn else Team.ENEMY
 
@@ -2024,7 +2465,8 @@ class AutoBattler:
 
         # Process turn-start abilities
         ability_msgs = self.board.process_turn_start_abilities(team, self.rng,
-                                                                self.active_synergies)
+                                                                self.active_synergies,
+                                                                master_effects=self.master_effects)
         self.battle_log.extend(ability_msgs)
 
         pieces = self.board.get_team_pieces(team)
@@ -2046,26 +2488,31 @@ class AutoBattler:
             is_capture = target and target.team != best_piece.team
             self._record_move(best_piece, best_piece.x, best_piece.y, captured=bool(is_capture))
             # Record last action for frontend animations
+            attacker_mods = [m.effect for m in best_piece.modifiers]
             if is_capture:
+                target_type = target.piece_type
+                target_hp_before = target.hp
+                target_max_hp = target.max_hp
+                captured = self.board.move_piece(best_piece, mx, my, rng=self.rng,
+                                                  active_synergies=self.active_synergies,
+                                                  master_effects=self.master_effects)
+                self._check_anchor_chain()
+
+                # --- Achievement stat tracking ---
+                dmg = target_hp_before - (target.hp if not captured else 0)
+
                 self._last_actions[(mx, my)] = {
                     "type": "attack",
                     "targetX": mx,
                     "targetY": my,
                     "fromX": old_x,
                     "fromY": old_y,
+                    "attackerType": best_piece.piece_type.value,
+                    "attackerMods": attacker_mods,
+                    "damage": dmg,
+                    "killed": bool(captured),
                 }
-            else:
-                self._last_actions[(mx, my)] = {"type": "move"}
-            if is_capture:
-                target_type = target.piece_type
-                target_hp_before = target.hp
-                target_max_hp = target.max_hp
-                captured = self.board.move_piece(best_piece, mx, my, rng=self.rng,
-                                                  active_synergies=self.active_synergies)
-                self._check_anchor_chain()
 
-                # --- Achievement stat tracking ---
-                dmg = target_hp_before - (target.hp if not captured else 0)
                 if dmg > self.run_stats["max_damage_hit"]:
                     self.run_stats["max_damage_hit"] = dmg
                     if self.save_data:
@@ -2093,7 +2540,8 @@ class AutoBattler:
                     # Track alive pieces before on-death (for phoenix revive detection)
                     alive_before = set(id(p) for p in self.board.pieces if p.alive and p.team == Team.PLAYER)
                     death_msgs = self.board.process_on_death(target, best_piece, self.rng,
-                                                              self.active_synergies)
+                                                              self.active_synergies,
+                                                              master_effects=self.master_effects)
                     self.battle_log.extend(death_msgs)
                     # On-death trigger tracking
                     if death_msgs:
@@ -2111,10 +2559,20 @@ class AutoBattler:
                 else:
                     log = f"{team.value} {best_piece.piece_type.value} hits {target_type.value} for {dmg} (HP:{target.hp}) — bounced"
             else:
+                self._last_actions[(mx, my)] = {
+                    "type": "move",
+                    "fromX": old_x,
+                    "fromY": old_y,
+                    "attackerType": best_piece.piece_type.value,
+                }
                 old_type = best_piece.piece_type
                 best_piece.x, best_piece.y = mx, my
                 best_piece.has_moved = True
                 self.board._grid_dirty = True
+                # Process non-capture side effects (Void block, fire trail, cell mods, etc.)
+                nc_msgs = self.board.process_non_capture_move(
+                    best_piece, old_x, old_y, self.rng, self.active_synergies)
+                self.battle_log.extend(nc_msgs)
                 if self.board.check_promotion(best_piece, self.rng):
                     log = f"{team.value} {old_type.value} promotes to {best_piece.piece_type.value}!"
                     sx, sy = self._board_to_screen(mx, my)
@@ -2145,6 +2603,14 @@ class AutoBattler:
             self.battle_log = self.battle_log[-14:]
         self.message = log
 
+        # Tactician master: second move per turn
+        if (self.board.count_alive(Team.PLAYER) > 0 and self.board.count_alive(Team.ENEMY) > 0):
+            if team == Team.PLAYER and self.master_key == "the_tactician":
+                self._do_extra_move(Team.PLAYER)
+            if team == Team.ENEMY and self.master_key == "the_tactician":
+                # Drawback: enemies also get double moves
+                self._do_extra_move(Team.ENEMY)
+
         self.battle_player_turn = not self.battle_player_turn
         if self.battle_player_turn:
             self.battle_turn += 1
@@ -2165,8 +2631,8 @@ class AutoBattler:
 
         if won:
             self.wins += 1
-            # Gold reward: 2 + surviving pieces
-            earned = 2 + player_alive
+            # Gold reward: 2 + surviving pieces + wave scaling
+            earned = 2 + player_alive + self.wave // 3
             # Royal modifier: surviving Royal pieces earn double score contribution
             royal_mult = 3 if self._has_artifact("iron_crown") else 2
             for p in self.board.get_team_pieces(Team.PLAYER):
@@ -2194,14 +2660,62 @@ class AutoBattler:
                                if not p.alive and p.team == Team.ENEMY}
                 earned += len(killed_types)
 
+            # Win streak bonus gold
+            self.win_streak += 1
+            if self.win_streak >= 4:
+                streak_bonus = 3
+            elif self.win_streak >= 3:
+                streak_bonus = 2
+            elif self.win_streak >= 2:
+                streak_bonus = 1
+            else:
+                streak_bonus = 0
+            earned += streak_bonus
+
+            # Apply encounter modifier gold multiplier & flat bonuses
+            if self.current_encounter:
+                gold_mult = 1.0
+                gold_flat = 0
+                for mod in self.current_encounter.get("modifiers", []):
+                    gold_mult *= mod.get("gold_multiplier", 1.0)
+                    gold_flat += mod.get("gold_flat_bonus", 0)
+                earned = int(earned * gold_mult) + gold_flat
+
             self.gold += earned
             self.run_stats["total_gold_earned_run"] += earned
-            self.message = f"Victory! ({player_alive} survive) +{earned}g"
+            streak_msg = f" (streak x{self.win_streak}!)" if streak_bonus > 0 else ""
+            self.message = f"Victory! ({player_alive} survive) +{earned}g{streak_msg}"
             self.battle_log.append(f"=== VICTORY === (+{earned}g)")
             self._trigger_flash((40, 200, 40))
             # Crown Jewel artifact: +1 ELO per wave won
             if self._has_artifact("crown_jewel") and self.tournament:
                 self.elo_earned += 1
+
+            # Mirror Master passive: copy strongest killed enemy at wave end
+            if self.master_key == "the_mirror_master":
+                best_type = None
+                best_atk = 0
+                best_hp = 0
+                for p in self.board.pieces:
+                    kill_atk = p.ability_flags.get("mirror_master_kill_atk", 0)
+                    if kill_atk > best_atk:
+                        best_atk = kill_atk
+                        best_type = p.ability_flags.get("mirror_master_kill_type")
+                        best_hp = p.ability_flags.get("mirror_master_kill_hp", 10)
+                if best_type:
+                    from pieces import PieceType as PT, PIECE_STATS
+                    try:
+                        pt = PT(best_type)
+                        copy_piece = Piece(pt, Team.PLAYER)
+                        if pt in PIECE_STATS:
+                            copy_piece.max_hp, copy_piece.attack = PIECE_STATS[pt]
+                        # Mirror Master drawback: copied pieces have -2 ATK
+                        copy_piece.attack = max(0, copy_piece.attack - 2)
+                        copy_piece.hp = copy_piece.max_hp
+                        self.roster.append(copy_piece)
+                        self.battle_log.append(f"Mirror Master copies {best_type}! (ATK -2)")
+                    except ValueError:
+                        pass
 
             # Gilded win streak tracking
             has_gilded = any(
@@ -2224,6 +2738,11 @@ class AutoBattler:
                     self.boss_index += 1
                     self.wave_in_round = 0
 
+                    # Regenerate encounter map for next segment
+                    self.encounter_map = self._generate_encounter_map()
+                    self.current_floor = 0
+                    self.segment_choices = []
+
                     # Check if tournament complete
                     if self.boss_index >= len(self.boss_sequence):
                         self._check_battle_achievements(won=True)
@@ -2234,18 +2753,23 @@ class AutoBattler:
 
         elif enemy_alive > 0 and player_alive == 0:
             self.losses += 1
+            self.win_streak = 0
             self.message = "Defeat!"
             self.battle_log.append("=== DEFEAT ===")
             self._trigger_flash((200, 40, 40))
 
             if self.tournament:
                 if self.wave_in_round >= self.waves_per_round:
-                    # Lost boss wave — don't advance
-                    self.wave_in_round = 0  # reset round, retry from normal waves
+                    # Lost boss wave — don't advance, retry from normal waves
+                    self.wave_in_round = 0
+                    self.encounter_map = self._generate_encounter_map()
+                    self.current_floor = 0
+                    self.segment_choices = []
                 else:
                     self.wave_in_round += 1
         else:
             self.losses += 1
+            self.win_streak = 0
             self.gold += 1  # consolation gold for draw
             self.message = "Draw! -1 life (+1g)"
             self.battle_log.append("=== DRAW === -1 life (+1g)")
@@ -2269,6 +2793,9 @@ class AutoBattler:
                 self.phase = "result"
         else:
             self.phase = "result"
+        # Clear encounter state after battle resolves
+        self.current_encounter = None
+        self.active_encounter_mods = []
         self._start_transition()
 
     def _check_elemental_trio(self) -> bool:
@@ -2447,15 +2974,41 @@ class AutoBattler:
                 "rewards": rewards,
             })
 
+    def _first_boss_milestone_bonus(self) -> int:
+        """Award +50 ELO per unique boss type beaten for the first time."""
+        if not self.save_data:
+            return 0
+        existing = set(self.save_data.stats.get("boss_types_beaten", []))
+        bonus = 0
+        for i in range(int(self.tournament_stats["bosses_beaten"])):
+            if i < len(self.boss_sequence):
+                bt = self.boss_sequence[i].value
+                if bt not in existing:
+                    bonus += 50
+        return bonus
+
     def _cash_out(self) -> None:
-        """Cash out of tournament early for 1/3 ELO instead of 1/4 penalty."""
+        """Cash out of tournament early for 60% ELO instead of 40% loss penalty."""
         self.elo_earned = self._calculate_elo(cash_out=True)
+
+        # First-boss milestone bonuses
+        milestone = self._first_boss_milestone_bonus()
+        self.elo_earned += milestone
 
         if self.save_data:
             self.save_data.elo += self.elo_earned
             self.save_data.stats["tournaments_completed"] = self.save_data.stats.get("tournaments_completed", 0) + 1
             self.save_data.stats["total_elo_earned"] = self.save_data.stats.get("total_elo_earned", 0) + self.elo_earned
             self.save_data.stats["bosses_beaten"] = self.save_data.stats.get("bosses_beaten", 0) + int(self.tournament_stats["bosses_beaten"])
+
+            # Track boss types beaten (for milestone tracking)
+            boss_types = self.save_data.stats.get("boss_types_beaten", [])
+            for i in range(int(self.tournament_stats["bosses_beaten"])):
+                if i < len(self.boss_sequence):
+                    bt = self.boss_sequence[i].value
+                    if bt not in boss_types:
+                        boss_types.append(bt)
+            self.save_data.stats["boss_types_beaten"] = boss_types
 
             import save_data as sd_module
             sd_module.save(self.save_data)
@@ -2466,6 +3019,10 @@ class AutoBattler:
     def _finish_tournament(self, won: bool) -> None:
         """End the tournament, calculate ELO, save results."""
         self.elo_earned = self._calculate_elo()
+
+        # First-boss milestone bonuses (must be before updating boss_types_beaten)
+        milestone = self._first_boss_milestone_bonus()
+        self.elo_earned += milestone
 
         if self.save_data:
             self.save_data.elo += self.elo_earned
@@ -2513,6 +3070,20 @@ class AutoBattler:
 
         pool = [PieceType.PAWN, PieceType.KNIGHT, PieceType.BISHOP,
                 PieceType.DUELIST, PieceType.DECOY, PieceType.LANCER]
+
+        # Unlocked pieces (from achievements/ELO shop) join the draft pool early
+        if self.save_data:
+            from save_data import DEFAULT_PIECES
+            for pname in self.save_data.unlocked_pieces:
+                if pname in DEFAULT_PIECES:
+                    continue  # already in base pool
+                try:
+                    pt = PieceType(pname)
+                    if pt not in pool:
+                        pool.append(pt)
+                except ValueError:
+                    pass
+
         if self.wave >= 3:
             pool.extend([PieceType.ROOK, PieceType.BOMB, PieceType.LEECH, PieceType.KING_RAT,
                          PieceType.CHARGER, PieceType.BARD, PieceType.WALL, PieceType.CANNON,
@@ -2527,6 +3098,12 @@ class AutoBattler:
                          PieceType.SHAPESHIFTER, PieceType.TIME_MAGE, PieceType.POLTERGEIST])
         if self.wave >= 6:
             pool.extend([PieceType.ANCHOR_PIECE, PieceType.MIRROR_PIECE, PieceType.VOID])
+
+        # Hivemind drawback: max 3 piece types — filter pool to existing types if at limit
+        if self.master_key == "the_hivemind":
+            existing_types = {p.piece_type for p in self.roster if p.alive}
+            if len(existing_types) >= 3:
+                pool = [pt for pt in pool if pt in existing_types]
 
         pool_keys = [pt.value for pt in pool]
         wave_bonus = self.wave * 0.1
@@ -2767,6 +3344,33 @@ class AutoBattler:
             for p in self.roster:
                 p.ability_flags["berserkers_torc"] = True
 
+        # --- Veteran bonus: pieces surviving multiple waves gain ATK ---
+        for p in self.roster:
+            if p.alive:
+                p.ability_flags["waves_survived"] = p.ability_flags.get("waves_survived", 0) + 1
+                vet_level = p.ability_flags.get("veteran_bonus_applied", 0)
+                ws = p.ability_flags["waves_survived"]
+                if ws >= 4 and vet_level < 2:
+                    p.attack += (2 - vet_level)
+                    p.ability_flags["veteran_bonus_applied"] = 2
+                elif ws >= 2 and vet_level < 1:
+                    p.attack += 1
+                    p.ability_flags["veteran_bonus_applied"] = 1
+
+        # --- Synergy effects at wave start ---
+
+        # Rat King: merge 3+ King Rats into one mega rat with combined HP/ATK
+        if self._has_synergy("rat_king"):
+            rats = [p for p in self.roster if p.piece_type == PieceType.KING_RAT and p.alive]
+            if len(rats) >= 3:
+                mega = rats[0]
+                for r in rats[1:]:
+                    mega.max_hp += r.max_hp
+                    mega.hp += r.hp
+                    mega.attack += r.attack
+                    r.alive = False
+                    self.roster.remove(r)
+
         # --- Master passives at wave start ---
         mk = self.master_key
 
@@ -2782,6 +3386,76 @@ class AutoBattler:
         if mk == "the_berserker":
             for p in self.roster:
                 p.ability_flags["berserker_master_drain"] = True
+
+        # Necromancer drawback: all pieces -2 max HP (applied each wave for new pieces)
+        if mk == "the_necromancer":
+            for p in self.roster:
+                if p.alive and not p.ability_flags.get("necro_hp_reduced"):
+                    p.max_hp = max(1, p.max_hp - 2)
+                    p.hp = min(p.hp, p.max_hp)
+                    p.ability_flags["necro_hp_reduced"] = True
+
+        # Pauper passive: Pawns get +3 HP (for newly acquired pawns)
+        if mk == "the_pauper":
+            for p in self.roster:
+                if p.alive and p.piece_type == PieceType.PAWN and not p.ability_flags.get("pauper_hp_buffed"):
+                    p.max_hp += 3
+                    p.hp += 3
+                    p.ability_flags["pauper_hp_buffed"] = True
+
+        # Collector drawback: pieces have -1 ATK (for newly acquired pieces)
+        if mk == "the_collector":
+            for p in self.roster:
+                if p.alive and not p.ability_flags.get("collector_atk_reduced"):
+                    p.attack = max(0, p.attack - 1)
+                    p.ability_flags["collector_atk_reduced"] = True
+
+        # Phantom drawback: pieces have -3 max HP (for newly acquired pieces)
+        if mk == "the_phantom":
+            for p in self.roster:
+                if p.alive and not p.ability_flags.get("phantom_hp_reduced"):
+                    p.max_hp = max(1, p.max_hp - 3)
+                    p.hp = min(p.hp, p.max_hp)
+                    p.ability_flags["phantom_hp_reduced"] = True
+
+        # Warden passive: pieces on border cells gain Armored
+        if mk == "the_warden":
+            from pieces import MODIFIERS as PIECE_MODIFIERS
+            armored_mod = PIECE_MODIFIERS.get("armored")
+            if armored_mod:
+                for p in self.roster:
+                    if p.alive:
+                        on_border = (p.x == 0 or p.x == self.board.width - 1
+                                     or p.y == 0 or p.y == self.board.height - 1)
+                        if on_border and not any(m.effect == "armored" for m in p.modifiers):
+                            p.modifiers.append(armored_mod)
+
+        # Anarchist passive: random board rule each wave
+        if mk == "the_anarchist" and self.wave > 0:
+            from modifiers import CELL_MODIFIERS, make_cell_modifier
+            rules = ["dead_zone", "blocked_center", "random_cell_mod"]
+            rule = self.rng.choice(rules)
+            if rule == "dead_zone":
+                # Remove 2 random cells from the board
+                for _ in range(2):
+                    rx, ry = self.rng.randint(0, self.board.width - 1), self.rng.randint(0, self.board.height - 1)
+                    self.board.dead_zone.add((rx, ry))
+            elif rule == "blocked_center":
+                # Block 2 random center cells
+                cx, cy = self.board.width // 2, self.board.height // 2
+                for dx in [-1, 0]:
+                    for dy in [-1, 0]:
+                        if self.rng.random() < 0.5:
+                            self.board.blocked_tiles.add((cx + dx, cy + dy))
+            elif rule == "random_cell_mod":
+                # Place 3 random cell mods
+                cell_keys = list(CELL_MODIFIERS.keys())
+                for _ in range(3):
+                    key = self.rng.choice(cell_keys)
+                    rx, ry = self.rng.randint(0, self.board.width - 1), self.rng.randint(0, self.board.height - 1)
+                    if (rx, ry) not in self.board.cell_modifiers:
+                        cm = make_cell_modifier(key, rx, ry)
+                        self.board.cell_modifiers[(rx, ry)] = cm
 
     # --- Shop ---
 
@@ -3016,6 +3690,50 @@ class AutoBattler:
         if self.master.drawback == "anarchist_drawback":
             self.shop_items = [it for it in self.shop_items if it["type"] != "tarot"]
 
+        # --- Synergy shop effects ---
+
+        # Trade Empire: +4 extra items, 1 random free
+        if "trade_empire" in self.active_synergies:
+            for _ in range(4):
+                roll = self.rng.random()
+                if roll < 0.5:
+                    key = self.rng.choice(available_mod_keys)
+                    mod = MODIFIERS[key]
+                    rarity = get_rarity("piece_mod", key)
+                    self.shop_items.append({
+                        "type": "piece_mod", "key": key, "mod": mod,
+                        "cost": get_shop_cost(5, rarity), "rarity": rarity.value,
+                        "icon": "*", "category": "Piece Mod",
+                        "color": PIECE_MODIFIER_VISUALS[key]["color"],
+                        "name": mod.name, "description": mod.description,
+                    })
+                else:
+                    key = self.rng.choice(cell_mod_keys)
+                    tmpl = CELL_MODIFIERS[key]
+                    rarity = get_rarity("cell_mod", key)
+                    self.shop_items.append({
+                        "type": "cell_mod", "key": key,
+                        "cost": get_shop_cost(3, rarity), "rarity": rarity.value,
+                        "icon": tmpl["icon"], "category": "Cell Mod",
+                        "color": tmpl["color"],
+                        "name": tmpl["name"], "description": tmpl["description"],
+                    })
+            # One random item is free
+            if self.shop_items:
+                free_idx = self.rng.randint(0, len(self.shop_items) - 1)
+                self.shop_items[free_idx]["cost"] = 0
+
+        # Midas Touch: shop prices -20%
+        if "midas_touch" in self.active_synergies:
+            for item in self.shop_items:
+                item["cost"] = max(1, int(item["cost"] * 0.8))
+
+        # Master Forger: modifier costs reduced to 1 gold
+        if "master_forger" in self.active_synergies:
+            for item in self.shop_items:
+                if item["type"] == "piece_mod":
+                    item["cost"] = 1
+
     def _get_shop_rows(self) -> list[dict]:
         """Build categorized rows from shop_items for multi-row display."""
         rows = []
@@ -3032,10 +3750,15 @@ class AutoBattler:
 
         # Sell row: roster pieces that can be sold
         sell_items = []
+        # Merchant passive: sell at 50% of buy price (much better than base sell values)
+        merchant_sell = (self.master_key == "the_merchant")
         for i, p in enumerate(self.roster):
             if p.alive and len(self.roster) > 1:  # can't sell last piece
                 rarity = PIECE_RARITY.get(p.piece_type.value, Rarity.COMMON)
                 sell_val = PIECE_SELL_VALUES.get(rarity, 1)
+                if merchant_sell:
+                    buy_price = get_shop_cost(5, rarity)  # approximate buy price
+                    sell_val = max(sell_val, buy_price // 2)
                 sell_items.append((1000 + i, {
                     "type": "sell_piece",
                     "key": p.piece_type.value,
@@ -3133,6 +3856,8 @@ class AutoBattler:
                 self.message = "Not enough gold!"
                 return None
 
+            _gold_before = self.gold
+
             if item["type"] == "piece_mod":
                 max_mods = 2 if self._has_artifact("forge_hammer") else 1
                 eligible = [p for p in self.roster if len(p.modifiers) < max_mods]
@@ -3203,10 +3928,17 @@ class AutoBattler:
                 if roster_idx < len(self.roster) and len(self.roster) > 1:
                     sold_piece = self.roster.pop(roster_idx)
                     sell_val = abs(item["cost"])
+                    # Merchant passive: sell at 50% price (instead of base value)
+                    if self.master_key == "the_merchant":
+                        sell_val = max(1, sell_val)  # merchant enables selling; base val already set
                     self.gold += sell_val
                     self.run_stats["items_sold_run"] += 1
                     self.message = f"Sold {sold_piece.piece_type.value} for {sell_val}g!"
                     self._clamp_shop_cursor()
+
+            # Collector passive: +1 gold whenever you acquire any item
+            if self.master_key == "the_collector" and self.gold < _gold_before:
+                self.gold += 1
 
         elif action == Action.CANCEL:
             self._generate_draft()
@@ -3366,6 +4098,43 @@ class AutoBattler:
             self.message = "Cancelled — gold refunded."
         return None
 
+    def _handle_map(self, action: Action) -> GameState | None:
+        """Handle input on the encounter map screen."""
+        if self.current_floor >= len(self.encounter_map):
+            # Shouldn't happen, but safety fallback
+            self._start_wave()
+            return None
+
+        floor = self.encounter_map[self.current_floor]
+        if action == Action.LEFT:
+            self.map_selection = max(0, self.map_selection - 1)
+        elif action == Action.RIGHT:
+            self.map_selection = min(len(floor) - 1, self.map_selection + 1)
+        elif action == Action.MOUSE_CLICK:
+            # Selection was set via set_selection from JS hover; treat as confirm
+            action = Action.CONFIRM
+        if action == Action.CONFIRM:
+            self.segment_choices.append(self.map_selection)
+            self.current_encounter = floor[self.map_selection]
+            self.current_floor += 1
+            self._apply_encounter_modifiers()
+            self._start_wave()
+        return None
+
+    def _apply_encounter_modifiers(self) -> None:
+        """Pre-process the selected encounter's modifiers into actionable data."""
+        enc = self.current_encounter
+        if not enc:
+            self.active_encounter_mods = []
+            self.pending_cell_spawns = []
+            return
+        self.active_encounter_mods = list(enc.get("modifiers", []))
+        self.pending_cell_spawns = []
+        for mod in self.active_encounter_mods:
+            spawn = mod.get("spawn_cells")
+            if spawn:
+                self.pending_cell_spawns.append(spawn)
+
     def _handle_draft(self, action: Action) -> GameState | None:
         skip_idx = next(
             (i for i, o in enumerate(self.draft_options) if o["type"] == "skip"),
@@ -3426,10 +4195,19 @@ class AutoBattler:
                 self.roster = new_roster
                 self.run_stats["unique_piece_types_used"].add(opt["to"].value)
                 self.message = f"Combined into {opt['to'].value}!"
-            self._start_wave()
+            self._advance_to_next_encounter()
         elif action == Action.CANCEL:
-            self._start_wave()
+            self._advance_to_next_encounter()
         return None
+
+    def _advance_to_next_encounter(self) -> None:
+        """After draft, go to map (or straight to boss if applicable)."""
+        if self.tournament and self.wave_in_round >= self.waves_per_round:
+            self._start_wave()  # boss wave — skip map
+        else:
+            self.phase = "map"
+            self.map_selection = 0
+            self._auto_save()
 
     # --- Rendering ---
 
@@ -3454,6 +4232,8 @@ class AutoBattler:
             self._render_swap_tarot(console)
         elif self.phase == "draft":
             self._render_draft(console)
+        elif self.phase == "map":
+            pass  # Map rendering is handled by the web frontend
         elif self.phase == "boss_intro":
             self._render_boss_intro(console)
         elif self.phase == "tournament_end":
